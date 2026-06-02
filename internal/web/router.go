@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -20,6 +21,10 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	router := gin.Default()
 	router.GET("/health", healthHandler(deps.Env))
 
+	// Middleware de Rate Limit global o específico
+	// Por ejemplo: 10 peticiones por minuto para Auth
+	authLimiter := middleware.RateLimiter(deps.Redis, 10, time.Minute)
+
 	// Inicializar capas
 	userRepo := repo.NewUserRepository(deps.DBPool)
 	authService := service.NewAuthService(userRepo, deps.Config)
@@ -28,8 +33,9 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	// Rutas
 	api := router.Group("/api")
 	{
-		// Rutas públicas
+		// Rutas públicas con Rate Limit
 		auth := api.Group("/auth")
+		auth.Use(authLimiter)
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)

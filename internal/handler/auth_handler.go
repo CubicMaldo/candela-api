@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
 	"github.com/tuusuario/nomad-api/internal/domain"
 	"github.com/tuusuario/nomad-api/internal/service"
 )

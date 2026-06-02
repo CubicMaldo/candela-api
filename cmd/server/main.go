@@ -17,7 +17,6 @@ import (
 	redisclient "github.com/tuusuario/nomad-api/internal/infra/redis"
 	"github.com/tuusuario/nomad-api/internal/web"
 	"github.com/tuusuario/nomad-api/internal/webdeps"
-
 )
 
 func main() {
@@ -50,6 +49,7 @@ func main() {
 		Env:    cfg.AppEnv,
 		Config: cfg,
 		DBPool: pool,
+		Redis:  rdb,
 	})
 
 	srv := &http.Server{

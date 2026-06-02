@@ -57,7 +57,7 @@ func (s *AuthService) Register(ctx context.Context, req domain.RegisterRequest) 
 		PasswordHash:  string(hash),
 		BirthDate:     req.BirthDate,
 		Age:           age,
-		AccountStatus: "ACTIVE", // For 18+, auto active
+		AccountStatus: "ACTIVE",  // For 18+, auto active
 		PrivacyMode:   "FRIENDS", // default mode
 	}
 
@@ -109,12 +109,12 @@ func (s *AuthService) GoogleLogin(ctx context.Context, req domain.GoogleAuthRequ
 	}
 
 	email := payload.Claims["email"].(string)
-	
+
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if err == repo.ErrUserNotFound {
 			// Create user implicitly from google
-			// Since we don't have birthdate from basic google scope, we might need a 2-step process, 
+			// Since we don't have birthdate from basic google scope, we might need a 2-step process,
 			// but for this MVP we can bypass age if logged in via Google if you allow it, or set default.
 			// Ideally, we'd require the user to complete their profile with DOB.
 			// We'll set a placeholder or return error requiring DOB.
@@ -136,9 +136,9 @@ func (s *AuthService) GoogleLogin(ctx context.Context, req domain.GoogleAuthRequ
 
 func (s *AuthService) generateJWT(user *domain.User) (string, error) {
 	claims := jwt.MapClaims{
-		"sub": user.UserID.String(),
+		"sub":   user.UserID.String(),
 		"email": user.Email,
-		"exp": time.Now().Add(72 * time.Hour).Unix(),
+		"exp":   time.Now().Add(72 * time.Hour).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
