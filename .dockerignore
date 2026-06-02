@@ -1,0 +1,16 @@
+# Secretos — nunca dentro de la imagen
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Binarios y temporales
+tmp/
+nomad-api
+
+# Documentación y configs de desarrollo
+*.md
+.air.toml
+Makefile

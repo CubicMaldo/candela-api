@@ -1,0 +1,18 @@
+# Binarios
+tmp/
+nomad-api
+
+# Variables de entorno — NUNCA al repo
+.env
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

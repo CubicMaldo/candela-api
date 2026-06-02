@@ -1,0 +1,26 @@
+# Dockerfile.dev — Solo para desarrollo local con hot reload
+# NO usar en producción
+
+FROM golang:1.26.1-alpine
+
+# Dependencias del sistema (PostGIS client libs no se necesitan, 
+# la validación geo la hace PostgreSQL server-side)
+RUN apk add --no-cache git curl
+
+# Air — hot reload para Go
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /app
+
+# Copiar go.mod y go.sum primero para aprovechar layer cache de Docker
+# Solo se re-descarga si cambian las dependencias
+COPY go.mod go.sum ./
+RUN go mod download
+
+# El resto del código se monta como volumen (no se copia aquí)
+# Así Air detecta cambios en tiempo real
+
+EXPOSE 8080
+
+# Air levanta el servidor y lo reconstruye al detectar cambios en .go
+CMD ["air", "-c", "air.toml"]
