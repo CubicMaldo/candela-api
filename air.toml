@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 
 [build]
   # Comando de build
-  cmd = "go build -o ./tmp/nomad-api ./cmd/server"
+  cmd = "go build -buildvcs=false -o ./tmp/nomad-api ./cmd/server"
   # Binario resultante
   bin = "./tmp/nomad-api"
   # Argumentos al ejecutar

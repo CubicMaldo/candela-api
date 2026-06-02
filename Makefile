@@ -6,7 +6,7 @@
 
 # ── Variables ────────────────────────────────────────────
 COMPOSE = docker compose
-MIGRATE = $(COMPOSE) exec api go run github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
+MIGRATE = $(COMPOSE) exec api go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
           -path /app/db/migrations \
           -database "$$DATABASE_URL"
 
@@ -45,17 +45,17 @@ build: ## Reconstruye la imagen del API (tras cambiar Dockerfile.dev)
 
 # ── Migraciones ──────────────────────────────────────────
 migrate-up: ## Aplica todas las migraciones pendientes
-	$(COMPOSE) exec api sh -c 'migrate -path /app/db/migrations -database "$$DATABASE_URL" up'
+	$(MIGRATE) up
 
 migrate-down: ## Revierte la última migración
-	$(COMPOSE) exec api sh -c 'migrate -path /app/db/migrations -database "$$DATABASE_URL" down 1'
+	$(MIGRATE) down 1
 
 migrate-drop: ## ⚠️ Elimina TODAS las tablas (usa solo en dev)
-	$(COMPOSE) exec api sh -c 'migrate -path /app/db/migrations -database "$$DATABASE_URL" drop -f'
+	$(MIGRATE) drop -f
 
 migrate-create: ## Crea nuevos archivos de migración. Uso: make migrate-create name=add_notifications
 	@read -p "Nombre de la migración: " name; \
-	$(COMPOSE) exec api sh -c "migrate create -ext sql -dir /app/db/migrations -seq $$name"
+	$(COMPOSE) exec api go run github.com/golang-migrate/migrate/v4/cmd/migrate@latest create -ext sql -dir /app/db/migrations -seq $$name
 
 # ── Shells ───────────────────────────────────────────────
 shell-api: ## Abre shell dentro del contenedor API

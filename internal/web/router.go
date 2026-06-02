@@ -30,6 +30,10 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	authService := service.NewAuthService(userRepo, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
 
+	placeRepo := repo.NewPlaceRepository(deps.DBPool)
+	placeService := service.NewPlaceService(placeRepo)
+	placeHandler := handler.NewPlaceHandler(placeService)
+
 	// Rutas
 	api := router.Group("/api")
 	{
@@ -46,11 +50,18 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 		protected := api.Group("")
 		protected.Use(middleware.AuthMiddleware(deps.Config.JWTSecret))
 		{
-			// Aquí irán /places, /checkins, etc.
+			// /me
 			protected.GET("/me", func(c *gin.Context) {
 				userID := c.MustGet("userID").(string)
 				c.JSON(200, gin.H{"user_id": userID, "message": "Estás autenticado"})
 			})
+
+			// Lugares
+			places := protected.Group("/places")
+			{
+				// GET /api/places/nearby?lat=...&lon=...&radius_km=...
+				places.GET("/nearby", placeHandler.SearchNearby)
+			}
 		}
 	}
 
