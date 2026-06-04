@@ -4,7 +4,7 @@ services:
   # PostgreSQL + PostGIS
   # ─────────────────────────────────────────
   postgres:
-    image: postgis/postgis:16-3.4-alpine
+    image: postgis/postgis:16-3.5-alpine
     container_name: nomad_postgres
     restart: unless-stopped
     environment:
@@ -40,6 +40,30 @@ services:
       retries: 5
 
   # ─────────────────────────────────────────
+  # MinIO — object storage compatible S3
+  # API: http://localhost:9000
+  # Console: http://localhost:9001
+  # ─────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: nomad_minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────
   # Go API — con hot reload (Air)
   # ─────────────────────────────────────────
   api:
@@ -56,26 +80,24 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ACCESS_EXPIRY=15m
-      - JWT_REFRESH_EXPIRY=168h
-      - AWS_BUCKET=${AWS_BUCKET}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET=nomad-photos
+      - STORAGE_USE_SSL=false
     volumes:
-      # Monta el código fuente para hot reload
       - .:/app
-      # Cache de módulos Go — evita re-descargar en cada rebuild
       - go_mod_cache:/go/pkg/mod
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
   # ─────────────────────────────────────────
   # Adminer — UI web para explorar la DB
-  # Solo en desarrollo, no va a producción
   # ─────────────────────────────────────────
   adminer:
     image: adminer:latest
@@ -84,7 +106,6 @@ services:
     ports:
       - "8081:8080"
     environment:
-      # Adminer usa por defecto "db"; aquí el servicio real se llama "postgres"
       ADMINER_DEFAULT_SERVER: postgres
     depends_on:
       - postgres
@@ -92,4 +113,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   go_mod_cache:

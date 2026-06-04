@@ -6,9 +6,7 @@
 
 # ── Variables ────────────────────────────────────────────
 COMPOSE = docker compose
-MIGRATE = $(COMPOSE) exec api go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest \
-          -path /app/db/migrations \
-          -database "$$DATABASE_URL"
+MIGRATE = $(COMPOSE) exec api go run -tags 'postgres' ./cmd/migrate
 
 # ── Ayuda ────────────────────────────────────────────────
 help: ## Muestra esta ayuda
@@ -19,10 +17,10 @@ help: ## Muestra esta ayuda
 up: ## Levanta todos los servicios
 	$(COMPOSE) up -d
 	@echo ""
-	@echo "✅ Servicios corriendo:"
-	@echo "   API     → http://localhost:8080"
-	@echo "   Adminer → http://localhost:8081"
-	@echo "   DB      → localhost:5432"
+	@echo "   Servicios corriendo:"
+	@echo "   API     ->  http://localhost:8080"
+	@echo "   Adminer ->  http://localhost:8081"
+	@echo "   DB      ->  localhost:5432"
 	@echo ""
 
 down: ## Detiene y elimina los contenedores (datos persisten en volumes)
@@ -51,11 +49,12 @@ migrate-down: ## Revierte la última migración
 	$(MIGRATE) down 1
 
 migrate-drop: ## ⚠️ Elimina TODAS las tablas (usa solo en dev)
-	$(MIGRATE) drop -f
+	$(MIGRATE) drop
 
 migrate-create: ## Crea nuevos archivos de migración. Uso: make migrate-create name=add_notifications
 	@read -p "Nombre de la migración: " name; \
-	$(COMPOSE) exec api go run github.com/golang-migrate/migrate/v4/cmd/migrate@latest create -ext sql -dir /app/db/migrations -seq $$name
+	$(COMPOSE) exec api go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate \
+	  create -ext sql -dir /app/db/migrations -seq $$name
 
 # ── Shells ───────────────────────────────────────────────
 shell-api: ## Abre shell dentro del contenedor API
@@ -78,9 +77,9 @@ test: ## Corre tests
 setup: ## ⭐ Primer uso: copia .env y levanta servicios
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo "📝 .env creado desde .env.example — edita los valores antes de continuar"; \
+		echo ".env creado desde .env.example - edita los valores antes de continuar"; \
 	else \
-		echo "ℹ️  .env ya existe, no se sobreescribe"; \
+		echo ".env ya existe, no se sobreescribe"; \
 	fi
 	@echo ""
 	@echo "Próximo paso: edita .env y luego ejecuta: make up"

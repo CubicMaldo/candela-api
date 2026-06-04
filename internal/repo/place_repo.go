@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tuusuario/nomad-api/internal/domain"
@@ -14,6 +15,18 @@ type PlaceRepository struct {
 
 func NewPlaceRepository(db *pgxpool.Pool) *PlaceRepository {
 	return &PlaceRepository{db: db}
+}
+
+// IsActive returns true if the place exists and is_active = true.
+func (r *PlaceRepository) IsActive(ctx context.Context, placeID uuid.UUID) (bool, error) {
+	var active bool
+	err := r.db.QueryRow(ctx, `
+		SELECT is_active FROM places WHERE place_id = $1
+	`, placeID).Scan(&active)
+	if err != nil {
+		return false, err
+	}
+	return active, nil
 }
 
 // FindNearby usa PostGIS ST_DWithin para encontrar lugares y ordenarlos por distancia

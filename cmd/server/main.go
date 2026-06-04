@@ -15,6 +15,7 @@ import (
 	"github.com/tuusuario/nomad-api/internal/config"
 	"github.com/tuusuario/nomad-api/internal/infra/postgres"
 	redisclient "github.com/tuusuario/nomad-api/internal/infra/redis"
+	"github.com/tuusuario/nomad-api/internal/infra/storage"
 	"github.com/tuusuario/nomad-api/internal/web"
 	"github.com/tuusuario/nomad-api/internal/webdeps"
 )
@@ -45,11 +46,33 @@ func main() {
 	}
 	defer rdb.Close()
 
+	if err := storage.EnsureBucket(
+		cfg.StorageEndpoint,
+		cfg.StorageAccessKey,
+		cfg.StorageSecretKey,
+		cfg.StorageBucket,
+		cfg.StorageUseSSL,
+	); err != nil {
+		log.Fatalf("Unable to initialize storage bucket: %v", err)
+	}
+
+	store, err := storage.NewMinIO(
+		cfg.StorageEndpoint,
+		cfg.StorageAccessKey,
+		cfg.StorageSecretKey,
+		cfg.StorageBucket,
+		cfg.StorageUseSSL,
+	)
+	if err != nil {
+		log.Fatalf("Unable to create storage client: %v", err)
+	}
+
 	router := web.NewRouter(webdeps.Dependencies{
-		Env:    cfg.AppEnv,
-		Config: cfg,
-		DBPool: pool,
-		Redis:  rdb,
+		Env:     cfg.AppEnv,
+		Config:  cfg,
+		DBPool:  pool,
+		Redis:   rdb,
+		Storage: store,
 	})
 
 	srv := &http.Server{

@@ -12,6 +12,7 @@ vendor/
 .vscode/
 .idea/
 *.swp
+docs/
 
 # OS
 .DS_Store

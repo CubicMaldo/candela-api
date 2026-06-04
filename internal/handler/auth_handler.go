@@ -26,8 +26,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	resp, err := h.authService.Register(c.Request.Context(), req)
 	if err != nil {
-		if err == service.ErrUnderage {
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		if err == service.ErrMinorNotSupportedYet || err == service.ErrInvalidBirthDate {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

@@ -5,11 +5,13 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/tuusuario/nomad-api/internal/config"
+	"github.com/tuusuario/nomad-api/internal/infra/storage"
 )
 
 type Dependencies struct {
-	Env    string
-	DBPool *pgxpool.Pool
-	Redis  *redis.Client
-	Config config.Config
+	Env     string
+	DBPool  *pgxpool.Pool
+	Redis   *redis.Client
+	Config  config.Config
+	Storage storage.ObjectStorage
 }
