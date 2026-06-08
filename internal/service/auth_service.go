@@ -16,7 +16,7 @@ import (
 
 var (
 	ErrInvalidCredentials   = errors.New("invalid email or password")
-	ErrMinorNotSupportedYet = errors.New("support for users under 18 is coming soon")
+	ErrMinorNotSupportedYet = errors.New("Pronto Candela estará disponible para ti.")
 	ErrInvalidBirthDate     = errors.New("birth_date must be in YYYY-MM-DD format")
 )
 

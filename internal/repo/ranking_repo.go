@@ -25,6 +25,7 @@ func (r *RankingRepository) GetGlobal(ctx context.Context, limit, offset int) ([
 		WHERE account_status = 'ACTIVE'
 		  AND privacy_mode   = 'PUBLIC'
 		  AND is_protected   = false
+		  AND ranking_opt_in = TRUE
 	`).Scan(&total)
 	if err != nil {
 		return nil, 0, err
@@ -41,6 +42,7 @@ func (r *RankingRepository) GetGlobal(ctx context.Context, limit, offset int) ([
 		WHERE account_status = 'ACTIVE'
 		  AND privacy_mode   = 'PUBLIC'
 		  AND is_protected   = false
+		  AND ranking_opt_in = TRUE
 		ORDER BY points_total DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset)
@@ -76,6 +78,7 @@ func (r *RankingRepository) GetUserGlobalRank(ctx context.Context, userID uuid.U
 			WHERE account_status = 'ACTIVE'
 			  AND privacy_mode   = 'PUBLIC'
 			  AND is_protected   = false
+			  AND ranking_opt_in = TRUE
 		) ranked
 		WHERE user_id = $1
 	`, userID).Scan(&e.Rank, &e.UserID, &e.Username, &e.BadgeLevel, &e.PointsTotal)

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,68 +11,40 @@ import (
 )
 
 type ProfileService struct {
-	userRepo      *repo.UserRepository
-	feedRepo      *repo.FeedRepository
-	checkinRepo   *repo.CheckInRepository
-	challengeRepo *repo.ChallengeRepository
+	userRepo    *repo.UserRepository
+	feedRepo    *repo.FeedRepository
+	checkinRepo *repo.CheckInRepository
+	planRepo    *repo.PlanRepository
 }
 
 func NewProfileService(
 	ur *repo.UserRepository,
 	fr *repo.FeedRepository,
 	cr *repo.CheckInRepository,
-	ch *repo.ChallengeRepository,
+	pr *repo.PlanRepository,
 ) *ProfileService {
-	return &ProfileService{userRepo: ur, feedRepo: fr, checkinRepo: cr, challengeRepo: ch}
+	return &ProfileService{userRepo: ur, feedRepo: fr, checkinRepo: cr, planRepo: pr}
 }
 
 func (s *ProfileService) GetMyProfile(ctx context.Context, userID uuid.UUID) (*domain.MyProfile, error) {
 	return s.userRepo.GetMyProfile(ctx, userID)
 }
 
-// GetFeed merges check-in and challenge events from accepted friends, sorted newest-first.
-// Returns the event slice and the cursor for the next page (nil if no more results).
-func (s *ProfileService) GetFeed(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]interface{}, *time.Time, error) {
-	checkins, err := s.feedRepo.GetFeedCheckIns(ctx, userID, limit, before)
+// GetFeed returns the three-layer check-in feed (friends, followed places, city
+// activity), newest-first within each layer. Returns the event slice and the
+// cursor for the next page (nil if no more results).
+func (s *ProfileService) GetFeed(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]domain.CheckInEvent, *time.Time, error) {
+	events, err := s.feedRepo.GetFeedCheckIns(ctx, userID, limit, before)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	challenges, err := s.feedRepo.GetFeedChallenges(ctx, userID, limit, before)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Merge into a common sortable slice.
-	type entry struct {
-		ts   time.Time
-		data interface{}
-	}
-
-	merged := make([]entry, 0, len(checkins)+len(challenges))
-	for _, c := range checkins {
-		merged = append(merged, entry{c.Timestamp, c})
-	}
-	for _, c := range challenges {
-		merged = append(merged, entry{c.Timestamp, c})
-	}
-
-	sort.Slice(merged, func(i, j int) bool {
-		return merged[i].ts.After(merged[j].ts)
-	})
-
-	if len(merged) > limit {
-		merged = merged[:limit]
-	}
-
-	events := make([]interface{}, len(merged))
-	for i, e := range merged {
-		events[i] = e.data
+	if events == nil {
+		events = []domain.CheckInEvent{}
 	}
 
 	var cursor *time.Time
-	if len(merged) >= limit && len(merged) > 0 {
-		t := merged[len(merged)-1].ts
+	if len(events) >= limit && len(events) > 0 {
+		t := events[len(events)-1].Timestamp
 		cursor = &t
 	}
 
@@ -98,18 +69,18 @@ func (s *ProfileService) GetMyCheckIns(ctx context.Context, userID uuid.UUID, li
 	return results, cursor, nil
 }
 
-func (s *ProfileService) GetMyChallenges(ctx context.Context, userID uuid.UUID, statusFilter string) ([]domain.MyChallenge, error) {
-	// Lazy expiration: mark past-deadline challenges as FAILED before returning.
-	if err := s.challengeRepo.MarkExpiredForUser(ctx, userID); err != nil {
+func (s *ProfileService) GetMyPlans(ctx context.Context, userID uuid.UUID, statusFilter string) ([]domain.MyPlan, error) {
+	// Lazy expiration: mark past-deadline plans as FAILED before returning.
+	if err := s.planRepo.MarkExpiredForUser(ctx, userID); err != nil {
 		return nil, err
 	}
 
-	results, err := s.challengeRepo.GetMyChallenges(ctx, userID, statusFilter)
+	results, err := s.planRepo.GetMyPlans(ctx, userID, statusFilter)
 	if err != nil {
 		return nil, err
 	}
 	if results == nil {
-		results = []domain.MyChallenge{}
+		results = []domain.MyPlan{}
 	}
 	return results, nil
 }

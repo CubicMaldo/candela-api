@@ -28,18 +28,22 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	checkinRepo := repo.NewCheckInRepository(deps.DBPool)
 	rankingRepo := repo.NewRankingRepository(deps.DBPool)
 	friendshipRepo := repo.NewFriendshipRepository(deps.DBPool)
-	challengeRepo := repo.NewChallengeRepository(deps.DBPool)
+	planRepo := repo.NewPlanRepository(deps.DBPool)
 	feedRepo := repo.NewFeedRepository(deps.DBPool)
+	followRepo := repo.NewFollowRepository(deps.DBPool)
+	reportRepo := repo.NewReportRepository(deps.DBPool)
 
 	// Services
 	authService := service.NewAuthService(userRepo, deps.Config)
-	placeService := service.NewPlaceService(placeRepo)
-	checkinService := service.NewCheckInService(checkinRepo, challengeRepo, deps.Storage, deps.Redis)
-	rankingService := service.NewRankingService(rankingRepo, deps.Redis)
+	checkinService := service.NewCheckInService(checkinRepo, planRepo, userRepo, deps.Storage, deps.Redis)
+	rankingService := service.NewRankingService(rankingRepo, userRepo, deps.Redis)
 	userService := service.NewUserService(userRepo, friendshipRepo, deps.Redis)
 	friendService := service.NewFriendService(friendshipRepo, deps.Redis)
-	challengeService := service.NewChallengeService(challengeRepo, friendshipRepo, placeRepo)
-	profileService := service.NewProfileService(userRepo, feedRepo, checkinRepo, challengeRepo)
+	planService := service.NewPlanService(planRepo, friendshipRepo, placeRepo)
+	profileService := service.NewProfileService(userRepo, feedRepo, checkinRepo, planRepo)
+	followService := service.NewFollowService(followRepo, placeRepo)
+	reportService := service.NewReportService(reportRepo, userRepo, placeRepo, checkinRepo)
+	placeService := service.NewPlaceService(placeRepo, followService, checkinRepo)
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -48,8 +52,10 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	rankingHandler := handler.NewRankingHandler(rankingService)
 	userHandler := handler.NewUserHandler(userService)
 	friendHandler := handler.NewFriendHandler(friendService)
-	challengeHandler := handler.NewChallengeHandler(challengeService)
+	planHandler := handler.NewPlanHandler(planService)
 	profileHandler := handler.NewProfileHandler(profileService)
+	followHandler := handler.NewFollowHandler(followService)
+	reportHandler := handler.NewReportHandler(reportService)
 
 	api := router.Group("/api")
 	{
@@ -66,19 +72,31 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 		{
 			protected.GET("/me", profileHandler.GetMe)
 			protected.PATCH("/me/privacy", userHandler.UpdatePrivacy)
+			protected.PATCH("/me/ranking", rankingHandler.UpdateOptIn)
 			protected.DELETE("/me", userHandler.DeleteAccount)
 			protected.GET("/me/friends", friendHandler.GetFriends)
 			protected.GET("/me/check-ins", profileHandler.GetMyCheckIns)
-			protected.GET("/me/challenges", profileHandler.GetMyChallenges)
+			protected.GET("/me/plans", profileHandler.GetMyPlans)
 
 			protected.GET("/feed", profileHandler.GetFeed)
 
 			places := protected.Group("/places")
 			{
 				places.GET("/nearby", placeHandler.SearchNearby)
+				places.GET("/:place_id", placeHandler.GetDetail)
+				places.GET("/:place_id/feed", placeHandler.GetEventFeed)
+				places.POST("/:place_id/follow", followHandler.Follow)
+				places.DELETE("/:place_id/follow", followHandler.Unfollow)
 				places.POST("/:place_id/checkin/initiate", checkinHandler.Initiate)
 				places.POST("/:place_id/checkin/confirm", checkinHandler.Confirm)
 			}
+
+			checkins := protected.Group("/checkins")
+			{
+				checkins.PATCH("/:checkin_id/permanent", checkinHandler.SetPermanent)
+			}
+
+			protected.POST("/reports", reportHandler.Create)
 
 			rankings := protected.Group("/rankings")
 			{
@@ -104,14 +122,14 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 				friendRequests.DELETE("/:user_id", friendHandler.CancelRequest)
 			}
 
-			challenges := protected.Group("/challenges")
+			plans := protected.Group("/plans")
 			{
-				challenges.POST("", challengeHandler.Create)
-				challenges.GET("/incoming", challengeHandler.GetIncoming)
-				challenges.GET("/outgoing", challengeHandler.GetOutgoing)
-				challenges.GET("/:challenge_id", challengeHandler.GetByID)
-				challenges.POST("/:challenge_id/accept", challengeHandler.Accept)
-				challenges.POST("/:challenge_id/reject", challengeHandler.Reject)
+				plans.POST("", planHandler.Create)
+				plans.GET("/incoming", planHandler.GetIncoming)
+				plans.GET("/outgoing", planHandler.GetOutgoing)
+				plans.GET("/:plan_id", planHandler.GetByID)
+				plans.POST("/:plan_id/accept", planHandler.Accept)
+				plans.POST("/:plan_id/decline", planHandler.Decline)
 			}
 		}
 	}
@@ -123,7 +141,7 @@ func healthHandler(env string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
-			"service": "nomad-api",
+			"service": "candela-api",
 			"env":     env,
 		})
 	}

@@ -31,6 +31,32 @@ type Place struct {
 	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
 }
 
+// PlaceDetail is the response for GET /api/places/:place_id.
+type PlaceDetail struct {
+	PlaceID             uuid.UUID  `json:"place_id"`
+	Name                string     `json:"name"`
+	Category            string     `json:"category"`
+	Lat                 float64    `json:"lat"`
+	Lon                 float64    `json:"lon"`
+	GeofenceMeters      int        `json:"geofence_meters"`
+	IsVerified          bool       `json:"is_verified"`
+	IsActive            bool       `json:"is_active"`
+	IsFollowed          bool       `json:"is_followed"`
+	FollowerCount       int        `json:"follower_count"`
+	ActiveCheckinsCount int        `json:"active_checkins_count"`
+	LastCheckinAt       *time.Time `json:"last_checkin_at"`
+}
+
+// PlaceEventFeed is the response for GET /api/places/:place_id/feed.
+type PlaceEventFeed struct {
+	PlaceID    uuid.UUID      `json:"place_id"`
+	PlaceName  string         `json:"place_name"`
+	IsActive   bool           `json:"is_active"`
+	Events     []CheckInEvent `json:"events"`
+	Total      int            `json:"total"`
+	NextCursor *time.Time     `json:"next_cursor,omitempty"`
+}
+
 // Payload para que el mapa (frontend) pueda enviar sus coordenadas centrales
 type SearchPlacesRequest struct {
 	Lat      float64 `form:"lat" binding:"required"`

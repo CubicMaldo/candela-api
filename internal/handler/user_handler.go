@@ -52,7 +52,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	if err != nil {
 		switch err {
 		case service.ErrProfilePrivate, service.ErrUserNotVisible:
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Usuario no encontrado."})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}

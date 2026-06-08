@@ -22,17 +22,18 @@ type FeedPlace struct {
 
 // CheckInEvent is a feed item representing a friend's check-in.
 type CheckInEvent struct {
-	Type          string    `json:"type"`
-	EventID       uuid.UUID `json:"event_id"`
-	Timestamp     time.Time `json:"timestamp"`
-	User          FeedUser  `json:"user"`
-	Place         FeedPlace `json:"place"`
-	PhotoURL      *string   `json:"photo_url"`
-	PointsAwarded int       `json:"points_awarded"`
+	Type             string    `json:"type"`
+	EventID          uuid.UUID `json:"event_id"`
+	Timestamp        time.Time `json:"timestamp"`
+	User             FeedUser  `json:"user"`
+	Place            FeedPlace `json:"place"`
+	PhotoURL         *string   `json:"photo_url"`
+	PhotoIsPermanent bool      `json:"photo_is_permanent"`
+	PointsAwarded    int       `json:"points_awarded"`
 }
 
-// ChallengeCompletedEvent is a feed item representing a completed challenge involving friends.
-type ChallengeCompletedEvent struct {
+// PlanCompletedEvent is a feed item representing a completed plan involving friends.
+type PlanCompletedEvent struct {
 	Type      string    `json:"type"`
 	EventID   uuid.UUID `json:"event_id"`
 	Timestamp time.Time `json:"timestamp"`
@@ -44,26 +45,28 @@ type ChallengeCompletedEvent struct {
 // MyProfile is the authenticated user's own profile, including aggregated counts.
 // Sensitive fields (password_hash, guardian_token, guardian_contact) are excluded.
 type MyProfile struct {
-	UserID                   uuid.UUID  `json:"user_id"`
-	Email                    string     `json:"email"`
-	Username                 string     `json:"username"`
-	BirthDate                time.Time  `json:"birth_date"`
-	Age                      int        `json:"age"`
-	IsProtected              bool       `json:"is_protected"`
-	AccountStatus            string     `json:"account_status"`
-	PrivacyMode              string     `json:"privacy_mode"`
-	GuardianVerified         bool       `json:"guardian_verified"`
-	PointsTotal              int        `json:"points_total"`
-	PointsSeason             int        `json:"points_season"`
-	BadgeLevel               string     `json:"badge_level"`
-	StreakCurrent            int        `json:"streak_current"`
-	StreakMax                int        `json:"streak_max"`
-	StreakLastCheckin         *time.Time `json:"streak_last_checkin"`
-	CreatedAt                time.Time  `json:"created_at"`
-	UpdatedAt                time.Time  `json:"updated_at"`
-	CheckInCount             int        `json:"check_in_count"`
-	FriendsCount             int        `json:"friends_count"`
-	CompletedChallengesCount int        `json:"completed_challenges_count"`
+	UserID              uuid.UUID  `json:"user_id"`
+	Email               string     `json:"email"`
+	Username            string     `json:"username"`
+	BirthDate           time.Time  `json:"birth_date"`
+	Age                 int        `json:"age"`
+	IsProtected         bool       `json:"is_protected"`
+	AccountStatus       string     `json:"account_status"`
+	PrivacyMode         string     `json:"privacy_mode"`
+	PointsTotal         int        `json:"points_total"`
+	PointsSeason        int        `json:"points_season"`
+	BadgeLevel          string     `json:"badge_level"`
+	StreakWeeksCurrent  int        `json:"streak_weeks_current"`
+	StreakWeeksMax      int        `json:"streak_weeks_max"`
+	StreakWeekCheckins  int        `json:"streak_week_checkins"`
+	StreakWeekStart     *time.Time `json:"streak_week_start"`
+	StreakLastCheckin   *time.Time `json:"streak_last_checkin"`
+	RankingOptIn        bool       `json:"ranking_opt_in"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	CheckInCount        int        `json:"check_in_count"`
+	FriendsCount        int        `json:"friends_count"`
+	CompletedPlansCount int        `json:"completed_plans_count"`
 }
 
 // MyCheckIn is a single item in the user's own check-in history.
@@ -76,26 +79,24 @@ type MyCheckIn struct {
 	CheckedInAt   time.Time `json:"checked_in_at"`
 }
 
-// MyChallengeUser is embedded in MyChallenge for creator and target info.
-type MyChallengeUser struct {
+// MyPlanUser is embedded in MyPlan for creator and target info.
+type MyPlanUser struct {
 	UserID     uuid.UUID `json:"user_id"`
 	Username   string    `json:"username"`
 	BadgeLevel string    `json:"badge_level"`
 }
 
-// MyChallenge is an item in the user's challenge history, including role and participant info.
-type MyChallenge struct {
-	ChallengeID   uuid.UUID       `json:"challenge_id"`
-	Status        string          `json:"status"`
-	Message       *string         `json:"message,omitempty"`
-	DeadlineHours int             `json:"deadline_hours"`
-	CreatedAt     time.Time       `json:"created_at"`
-	DeadlineAt    time.Time       `json:"deadline_at"`
-	CompletedAt   *time.Time      `json:"completed_at,omitempty"`
-	PointsCreator *int            `json:"points_creator,omitempty"`
-	PointsTarget  *int            `json:"points_target,omitempty"`
-	Creator       MyChallengeUser `json:"creator"`
-	Target        MyChallengeUser `json:"target"`
-	Place         FeedPlace       `json:"place"`
-	Role          string          `json:"role"`
+// MyPlan is an item in the user's plan history, including role and participant info.
+type MyPlan struct {
+	PlanID        uuid.UUID  `json:"plan_id"`
+	Status        string     `json:"status"`
+	Message       *string    `json:"message,omitempty"`
+	DeadlineHours int        `json:"deadline_hours"`
+	CreatedAt     time.Time  `json:"created_at"`
+	DeadlineAt    time.Time  `json:"deadline_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	Creator       MyPlanUser `json:"creator"`
+	Target        MyPlanUser `json:"target"`
+	Place         FeedPlace  `json:"place"`
+	Role          string     `json:"role"`
 }

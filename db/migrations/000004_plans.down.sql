@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS plans;
+DROP TYPE IF EXISTS plan_status;

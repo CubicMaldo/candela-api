@@ -5,7 +5,7 @@ services:
   # ─────────────────────────────────────────
   postgres:
     image: postgis/postgis:16-3.5-alpine
-    container_name: nomad_postgres
+    container_name: candela_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -26,7 +26,7 @@ services:
   # ─────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: nomad_redis
+    container_name: candela_redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD}
     ports:
@@ -46,7 +46,7 @@ services:
   # ─────────────────────────────────────────
   minio:
     image: minio/minio:latest
-    container_name: nomad_minio
+    container_name: candela_minio
     command: server /data --console-address ":9001"
     restart: unless-stopped
     ports:
@@ -70,7 +70,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    container_name: nomad_api
+    container_name: candela_api
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -83,7 +83,7 @@ services:
       - STORAGE_ENDPOINT=http://minio:9000
       - STORAGE_ACCESS_KEY=minioadmin
       - STORAGE_SECRET_KEY=minioadmin
-      - STORAGE_BUCKET=nomad-photos
+      - STORAGE_BUCKET=candela-photos
       - STORAGE_USE_SSL=false
     volumes:
       - .:/app
@@ -101,7 +101,7 @@ services:
   # ─────────────────────────────────────────
   adminer:
     image: adminer:latest
-    container_name: nomad_adminer
+    container_name: candela_adminer
     restart: unless-stopped
     ports:
       - "8081:8080"

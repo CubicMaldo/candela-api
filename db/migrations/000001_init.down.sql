@@ -1,4 +1,7 @@
+DROP TABLE IF EXISTS point_transactions;
 DROP TABLE IF EXISTS users;
+
+DROP TYPE IF EXISTS point_reason;
 
 DROP EXTENSION IF EXISTS "uuid-ossp";
 DROP EXTENSION IF EXISTS postgis;

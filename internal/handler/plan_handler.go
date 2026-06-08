@@ -10,33 +10,33 @@ import (
 	"github.com/tuusuario/nomad-api/internal/service"
 )
 
-type ChallengeHandler struct {
-	challengeService *service.ChallengeService
+type PlanHandler struct {
+	planService *service.PlanService
 }
 
-func NewChallengeHandler(cs *service.ChallengeService) *ChallengeHandler {
-	return &ChallengeHandler{challengeService: cs}
+func NewPlanHandler(ps *service.PlanService) *PlanHandler {
+	return &PlanHandler{planService: ps}
 }
 
-// POST /api/challenges
-func (h *ChallengeHandler) Create(c *gin.Context) {
+// POST /api/plans
+func (h *PlanHandler) Create(c *gin.Context) {
 	creatorID := c.MustGet("userID").(uuid.UUID)
 
-	var req domain.CreateChallengeRequest
+	var req domain.CreatePlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	challenge, err := h.challengeService.Create(c.Request.Context(), creatorID, req)
+	plan, err := h.planService.Create(c.Request.Context(), creatorID, req)
 	if err != nil {
 		switch err {
-		case service.ErrCannotChallengeSelf, service.ErrInvalidDeadlineHours,
+		case service.ErrCannotPlanWithSelf, service.ErrInvalidDeadlineHours,
 			service.ErrTargetNotFriend, service.ErrPlaceNotActive:
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case service.ErrUserNotVisible:
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		case service.ErrDuplicateChallenge:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Usuario no encontrado."})
+		case service.ErrDuplicatePlan:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -44,26 +44,26 @@ func (h *ChallengeHandler) Create(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, challenge)
+	c.JSON(http.StatusCreated, plan)
 }
 
-// POST /api/challenges/:challenge_id/accept
-func (h *ChallengeHandler) Accept(c *gin.Context) {
+// POST /api/plans/:plan_id/accept
+func (h *PlanHandler) Accept(c *gin.Context) {
 	requesterID := c.MustGet("userID").(uuid.UUID)
-	challengeID, err := uuid.Parse(c.Param("challenge_id"))
+	planID, err := uuid.Parse(c.Param("plan_id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid challenge_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan_id"})
 		return
 	}
 
-	detail, err := h.challengeService.Accept(c.Request.Context(), requesterID, challengeID)
+	detail, err := h.planService.Accept(c.Request.Context(), requesterID, planID)
 	if err != nil {
 		switch err {
-		case service.ErrChallengeNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": "challenge not found"})
-		case service.ErrNotChallengeTarget:
+		case service.ErrPlanNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Plan no encontrado."})
+		case service.ErrNotPlanTarget:
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		case service.ErrChallengeNotPending, service.ErrChallengeExpired:
+		case service.ErrPlanNotPending, service.ErrPlanExpired:
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -74,22 +74,22 @@ func (h *ChallengeHandler) Accept(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
-// POST /api/challenges/:challenge_id/reject
-func (h *ChallengeHandler) Reject(c *gin.Context) {
+// POST /api/plans/:plan_id/decline
+func (h *PlanHandler) Decline(c *gin.Context) {
 	requesterID := c.MustGet("userID").(uuid.UUID)
-	challengeID, err := uuid.Parse(c.Param("challenge_id"))
+	planID, err := uuid.Parse(c.Param("plan_id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid challenge_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan_id"})
 		return
 	}
 
-	if err := h.challengeService.Reject(c.Request.Context(), requesterID, challengeID); err != nil {
+	if err := h.planService.Decline(c.Request.Context(), requesterID, planID); err != nil {
 		switch err {
-		case service.ErrChallengeNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": "challenge not found"})
-		case service.ErrNotChallengeTarget:
+		case service.ErrPlanNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Plan no encontrado."})
+		case service.ErrNotPlanTarget:
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		case service.ErrChallengeNotPending:
+		case service.ErrPlanNotPending:
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -100,42 +100,42 @@ func (h *ChallengeHandler) Reject(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// GET /api/challenges/incoming
-func (h *ChallengeHandler) GetIncoming(c *gin.Context) {
+// GET /api/plans/incoming
+func (h *PlanHandler) GetIncoming(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	results, err := h.challengeService.GetIncoming(c.Request.Context(), userID)
+	results, err := h.planService.GetIncoming(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"challenges": results, "total": len(results)})
+	c.JSON(http.StatusOK, gin.H{"plans": results, "total": len(results)})
 }
 
-// GET /api/challenges/outgoing
-func (h *ChallengeHandler) GetOutgoing(c *gin.Context) {
+// GET /api/plans/outgoing
+func (h *PlanHandler) GetOutgoing(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	results, err := h.challengeService.GetOutgoing(c.Request.Context(), userID)
+	results, err := h.planService.GetOutgoing(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"challenges": results, "total": len(results)})
+	c.JSON(http.StatusOK, gin.H{"plans": results, "total": len(results)})
 }
 
-// GET /api/challenges/:challenge_id
-func (h *ChallengeHandler) GetByID(c *gin.Context) {
+// GET /api/plans/:plan_id
+func (h *PlanHandler) GetByID(c *gin.Context) {
 	requesterID := c.MustGet("userID").(uuid.UUID)
-	challengeID, err := uuid.Parse(c.Param("challenge_id"))
+	planID, err := uuid.Parse(c.Param("plan_id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid challenge_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plan_id"})
 		return
 	}
 
-	detail, err := h.challengeService.GetByID(c.Request.Context(), requesterID, challengeID)
+	detail, err := h.planService.GetByID(c.Request.Context(), requesterID, planID)
 	if err != nil {
 		switch err {
-		case service.ErrChallengeNotFound, service.ErrNotChallengeParticipant:
-			c.JSON(http.StatusNotFound, gin.H{"error": "challenge not found"})
+		case service.ErrPlanNotFound, service.ErrNotPlanParticipant:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Plan no encontrado."})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}

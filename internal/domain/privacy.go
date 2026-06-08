@@ -12,14 +12,14 @@ type PrivacyUpdateRequest struct {
 
 // FullUserProfile is returned when the requester has full visibility.
 type FullUserProfile struct {
-	UserID        uuid.UUID `json:"user_id"`
-	Username      string    `json:"username"`
-	BadgeLevel    string    `json:"badge_level"`
-	PointsTotal   int       `json:"points_total"`
-	StreakCurrent int       `json:"streak_current"`
-	StreakMax     int       `json:"streak_max"`
-	CheckInCount  int       `json:"checkin_count"`
-	CreatedAt     time.Time `json:"created_at"`
+	UserID             uuid.UUID `json:"user_id"`
+	Username           string    `json:"username"`
+	BadgeLevel         string    `json:"badge_level"`
+	PointsTotal        *int      `json:"points_total,omitempty"`
+	StreakWeeksCurrent int       `json:"streak_weeks_current"`
+	StreakWeeksMax     int       `json:"streak_weeks_max"`
+	CheckInCount       int       `json:"check_in_count"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // PartialUserProfile is returned when the requester has limited visibility.

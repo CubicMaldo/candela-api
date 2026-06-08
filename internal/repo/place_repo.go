@@ -29,6 +29,26 @@ func (r *PlaceRepository) IsActive(ctx context.Context, placeID uuid.UUID) (bool
 	return active, nil
 }
 
+// GetByID returns a single place by its ID, including its lat/lon decoded from PostGIS.
+func (r *PlaceRepository) GetByID(ctx context.Context, placeID uuid.UUID) (*domain.Place, error) {
+	var p domain.Place
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			place_id, name, description, category, minor_suitability,
+			ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon,
+			geofence_meters, business_id, is_verified, is_active, created_at
+		FROM places
+		WHERE place_id = $1
+	`, placeID).Scan(
+		&p.PlaceID, &p.Name, &p.Description, &p.Category, &p.MinorSuitability,
+		&p.Lat, &p.Lon, &p.GeofenceMeters, &p.BusinessID, &p.IsVerified, &p.IsActive, &p.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // FindNearby usa PostGIS ST_DWithin para encontrar lugares y ordenarlos por distancia
 func (r *PlaceRepository) FindNearby(ctx context.Context, lat, lon float64, radiusInMeters float64, category string) ([]domain.Place, error) {
 	// NOTA: PostGIS ST_MakePoint toma argumentos como (longitud, latitud)

@@ -55,13 +55,38 @@ func (r *UserRepository) FindByID(ctx context.Context, userID uuid.UUID) (*domai
 	return &u, nil
 }
 
+// GetByID returns a user including their weekly streak fields, used by the
+// check-in service to compute and persist the weekly streak/multiplier.
+func (r *UserRepository) GetByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+	query := `
+		SELECT user_id, email, username, points_total,
+		       streak_weeks_current, streak_weeks_max, streak_week_checkins,
+		       streak_week_start, streak_last_checkin
+		FROM users WHERE user_id = $1
+	`
+
+	var u domain.User
+	err := r.db.QueryRow(ctx, query, userID).Scan(
+		&u.UserID, &u.Email, &u.Username, &u.PointsTotal,
+		&u.StreakWeeksCurrent, &u.StreakWeeksMax, &u.StreakWeekCheckins,
+		&u.StreakWeekStart, &u.StreakLastCheckin,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
 // FindByUsername returns a user and their total check-in count.
 // Returns ErrUserNotFound if the user does not exist or is not ACTIVE.
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*domain.User, int, error) {
 	query := `
 		SELECT u.user_id, u.username, u.badge_level, u.points_total,
-		       u.streak_current, u.streak_max, u.privacy_mode, u.is_protected,
-		       u.account_status, u.created_at,
+		       u.streak_weeks_current, u.streak_weeks_max, u.privacy_mode, u.is_protected,
+		       u.account_status, u.ranking_opt_in, u.created_at,
 		       COUNT(ci.checkin_id) AS checkin_count
 		FROM users u
 		LEFT JOIN check_ins ci ON ci.user_id = u.user_id
@@ -74,8 +99,8 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*
 	var checkInCount int
 	err := r.db.QueryRow(ctx, query, username).Scan(
 		&u.UserID, &u.Username, &u.BadgeLevel, &u.PointsTotal,
-		&u.StreakCurrent, &u.StreakMax, &u.PrivacyMode, &u.IsProtected,
-		&u.AccountStatus, &u.CreatedAt,
+		&u.StreakWeeksCurrent, &u.StreakWeeksMax, &u.PrivacyMode, &u.IsProtected,
+		&u.AccountStatus, &u.RankingOptIn, &u.CreatedAt,
 		&checkInCount,
 	)
 	if err != nil {
@@ -100,13 +125,27 @@ func (r *UserRepository) UpdatePrivacyMode(ctx context.Context, userID uuid.UUID
 	return nil
 }
 
+// UpdateRankingOptIn sets the user's ranking_opt_in flag.
+func (r *UserRepository) UpdateRankingOptIn(ctx context.Context, userID uuid.UUID, optIn bool) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE users SET ranking_opt_in = $1, updated_at = NOW() WHERE user_id = $2
+	`, optIn, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 // SoftDelete anonymizes PII and marks the account as DELETED.
 // check_ins and point_transactions rows are preserved.
 func (r *UserRepository) SoftDelete(ctx context.Context, userID uuid.UUID) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE users SET
 			account_status   = 'DELETED',
-			email            = 'deleted_' || user_id || '@nomad.deleted',
+			email            = 'deleted_' || user_id || '@candela.deleted',
 			username         = 'deleted_' || user_id,
 			password_hash    = '',
 			guardian_contact = NULL,
@@ -132,26 +171,28 @@ func (r *UserRepository) GetMyProfile(ctx context.Context, userID uuid.UUID) (*d
 		SELECT
 			u.user_id, u.email, u.username, u.birth_date, u.age,
 			u.is_protected, u.account_status, u.privacy_mode,
-			u.guardian_verified,
 			u.points_total, u.points_season, u.badge_level,
-			u.streak_current, u.streak_max, u.streak_last_checkin,
+			u.streak_weeks_current, u.streak_weeks_max,
+			u.streak_week_checkins, u.streak_week_start, u.streak_last_checkin,
+			u.ranking_opt_in,
 			u.created_at, u.updated_at,
 			(SELECT COUNT(*) FROM check_ins ci
 			 WHERE ci.user_id = $1 AND ci.validation_passed = true) AS check_in_count,
 			(SELECT COUNT(*) FROM friendships f
 			 WHERE (f.user_id_a = $1 OR f.user_id_b = $1) AND f.status = 'accepted') AS friends_count,
-			(SELECT COUNT(*) FROM challenges c
-			 WHERE (c.creator_user_id = $1 OR c.target_user_id = $1) AND c.status = 'COMPLETED') AS completed_challenges_count
+			(SELECT COUNT(*) FROM plans pl
+			 WHERE (pl.creator_user_id = $1 OR pl.target_user_id = $1) AND pl.status = 'COMPLETED') AS completed_plans_count
 		FROM users u
 		WHERE u.user_id = $1
 	`, userID).Scan(
 		&p.UserID, &p.Email, &p.Username, &p.BirthDate, &p.Age,
 		&p.IsProtected, &p.AccountStatus, &p.PrivacyMode,
-		&p.GuardianVerified,
 		&p.PointsTotal, &p.PointsSeason, &p.BadgeLevel,
-		&p.StreakCurrent, &p.StreakMax, &p.StreakLastCheckin,
+		&p.StreakWeeksCurrent, &p.StreakWeeksMax,
+		&p.StreakWeekCheckins, &p.StreakWeekStart, &p.StreakLastCheckin,
+		&p.RankingOptIn,
 		&p.CreatedAt, &p.UpdatedAt,
-		&p.CheckInCount, &p.FriendsCount, &p.CompletedChallengesCount,
+		&p.CheckInCount, &p.FriendsCount, &p.CompletedPlansCount,
 	)
 	if err != nil {
 		return nil, err

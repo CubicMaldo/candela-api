@@ -80,3 +80,40 @@ func (h *CheckInHandler) Confirm(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, result)
 }
+
+// PATCH /api/checkins/:checkin_id/permanent
+func (h *CheckInHandler) SetPermanent(c *gin.Context) {
+	checkinID, err := uuid.Parse(c.Param("checkin_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid checkin_id"})
+		return
+	}
+
+	userID := c.MustGet("userID").(uuid.UUID)
+
+	var req domain.PermanentUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	checkin, err := h.checkinService.SetPermanent(c.Request.Context(), userID, checkinID, req.Permanent)
+	if err != nil {
+		switch err {
+		case service.ErrCheckInNotFound:
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case service.ErrNotCheckInOwner:
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case service.ErrEventClosed:
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"checkin_id":         checkin.CheckInID,
+		"photo_is_permanent": checkin.PhotoIsPermanent,
+	})
+}

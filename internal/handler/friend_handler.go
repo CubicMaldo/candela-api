@@ -33,7 +33,7 @@ func (h *FriendHandler) SendRequest(c *gin.Context) {
 		case service.ErrCannotFriendYourself:
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case service.ErrUserNotVisible:
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "Usuario no encontrado."})
 		case service.ErrFriendRequestAlreadyExists, service.ErrAlreadyFriends:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:

@@ -10,8 +10,15 @@ type RankingEntry struct {
 	PointsTotal int       `json:"points_total"`
 }
 
+// RankingOptInRequest is sent to enable or disable participation in the global ranking.
+// A pointer is used so the binder can distinguish "absent" from "false".
+type RankingOptInRequest struct {
+	RankingOptIn *bool `json:"ranking_opt_in" binding:"required"`
+}
+
 type RankingsResponse struct {
-	Rankings []RankingEntry `json:"rankings"`
-	Total    int            `json:"total"`
-	UserRank *RankingEntry  `json:"user_rank"`
+	Rankings       []RankingEntry `json:"rankings"`
+	Total          int            `json:"total"`
+	UserRank       *RankingEntry  `json:"user_rank"`
+	UserRankReason *string        `json:"user_rank_reason,omitempty"`
 }

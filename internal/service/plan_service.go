@@ -12,31 +12,31 @@ import (
 )
 
 var (
-	ErrInvalidDeadlineHours    = errors.New("deadline_hours must be 24, 48, or 72")
-	ErrCannotChallengeSelf     = errors.New("you cannot challenge yourself")
-	ErrTargetNotFriend         = errors.New("you can only challenge accepted friends")
-	ErrPlaceNotActive          = errors.New("this place is not available for challenges")
-	ErrDuplicateChallenge      = errors.New("an active challenge already exists for this place with this friend")
-	ErrChallengeNotFound       = errors.New("challenge not found")
-	ErrNotChallengeParticipant = errors.New("challenge not found")
-	ErrNotChallengeTarget      = errors.New("you are not the target of this challenge")
-	ErrChallengeNotPending     = errors.New("challenge is no longer pending")
-	ErrChallengeExpired        = errors.New("challenge has expired")
+	ErrInvalidDeadlineHours = errors.New("deadline_hours must be 24, 48, or 72")
+	ErrCannotPlanWithSelf   = errors.New("No te puedes proponer planes a ti mismo.")
+	ErrTargetNotFriend      = errors.New("Solo puedes proponer planes a tus amigos.")
+	ErrPlaceNotActive       = errors.New("Este lugar no está disponible en este momento.")
+	ErrDuplicatePlan        = errors.New("Ya tienes un plan activo con esta persona para este lugar.")
+	ErrPlanNotFound         = errors.New("Plan no encontrado.")
+	ErrNotPlanParticipant   = errors.New("Plan no encontrado.")
+	ErrNotPlanTarget        = errors.New("you are not the target of this plan")
+	ErrPlanNotPending       = errors.New("plan is no longer pending")
+	ErrPlanExpired          = errors.New("plan has expired")
 )
 
-type ChallengeService struct {
-	challengeRepo  *repo.ChallengeRepository
+type PlanService struct {
+	planRepo       *repo.PlanRepository
 	friendshipRepo *repo.FriendshipRepository
 	placeRepo      *repo.PlaceRepository
 }
 
-func NewChallengeService(cr *repo.ChallengeRepository, fr *repo.FriendshipRepository, pr *repo.PlaceRepository) *ChallengeService {
-	return &ChallengeService{challengeRepo: cr, friendshipRepo: fr, placeRepo: pr}
+func NewPlanService(pr *repo.PlanRepository, fr *repo.FriendshipRepository, plr *repo.PlaceRepository) *PlanService {
+	return &PlanService{planRepo: pr, friendshipRepo: fr, placeRepo: plr}
 }
 
-func (s *ChallengeService) Create(ctx context.Context, creatorID uuid.UUID, req domain.CreateChallengeRequest) (*domain.Challenge, error) {
+func (s *PlanService) Create(ctx context.Context, creatorID uuid.UUID, req domain.CreatePlanRequest) (*domain.Plan, error) {
 	if creatorID == req.TargetUserID {
-		return nil, ErrCannotChallengeSelf
+		return nil, ErrCannotPlanWithSelf
 	}
 
 	valid := req.DeadlineHours == 24 || req.DeadlineHours == 48 || req.DeadlineHours == 72
@@ -68,115 +68,115 @@ func (s *ChallengeService) Create(ctx context.Context, creatorID uuid.UUID, req 
 		return nil, ErrPlaceNotActive
 	}
 
-	duplicate, err := s.challengeRepo.HasActiveChallenge(ctx, creatorID, req.TargetUserID, req.PlaceID)
+	duplicate, err := s.planRepo.HasActivePlan(ctx, creatorID, req.TargetUserID, req.PlaceID)
 	if err != nil {
 		return nil, err
 	}
 	if duplicate {
-		return nil, ErrDuplicateChallenge
+		return nil, ErrDuplicatePlan
 	}
 
-	challenge := &domain.Challenge{
-		ChallengeID:   uuid.New(),
+	plan := &domain.Plan{
+		PlanID:        uuid.New(),
 		CreatorUserID: creatorID,
 		TargetUserID:  req.TargetUserID,
 		PlaceID:       req.PlaceID,
 		DeadlineHours: req.DeadlineHours,
-		Status:        "PENDING",
+		Status:        domain.PlanPending,
 		Message:       req.Message,
 		DeadlineAt:    time.Now().UTC().Add(time.Duration(req.DeadlineHours) * time.Hour),
 	}
 
-	if err := s.challengeRepo.Create(ctx, challenge); err != nil {
+	if err := s.planRepo.Create(ctx, plan); err != nil {
 		return nil, err
 	}
-	return challenge, nil
+	return plan, nil
 }
 
-func (s *ChallengeService) Accept(ctx context.Context, requesterID, challengeID uuid.UUID) (*domain.ChallengeDetail, error) {
-	detail, err := s.challengeRepo.GetByID(ctx, challengeID)
+func (s *PlanService) Accept(ctx context.Context, requesterID, planID uuid.UUID) (*domain.PlanDetail, error) {
+	detail, err := s.planRepo.GetByID(ctx, planID)
 	if err != nil {
-		if errors.Is(err, repo.ErrChallengeNotFound) {
-			return nil, ErrChallengeNotFound
+		if errors.Is(err, repo.ErrPlanNotFound) {
+			return nil, ErrPlanNotFound
 		}
 		return nil, err
 	}
 
 	if detail.TargetUserID != requesterID {
-		return nil, ErrNotChallengeTarget
+		return nil, ErrNotPlanTarget
 	}
-	if detail.Status != "PENDING" {
-		return nil, ErrChallengeNotPending
+	if detail.Status != domain.PlanPending {
+		return nil, ErrPlanNotPending
 	}
 	if time.Now().UTC().After(detail.DeadlineAt) {
-		return nil, ErrChallengeExpired
+		return nil, ErrPlanExpired
 	}
 
-	if err := s.challengeRepo.Accept(ctx, challengeID, requesterID); err != nil {
+	if err := s.planRepo.Accept(ctx, planID, requesterID); err != nil {
 		return nil, err
 	}
-	detail.Status = "ACCEPTED"
+	detail.Status = domain.PlanAccepted
 	return detail, nil
 }
 
-func (s *ChallengeService) Reject(ctx context.Context, requesterID, challengeID uuid.UUID) error {
-	detail, err := s.challengeRepo.GetByID(ctx, challengeID)
+func (s *PlanService) Decline(ctx context.Context, requesterID, planID uuid.UUID) error {
+	detail, err := s.planRepo.GetByID(ctx, planID)
 	if err != nil {
-		if errors.Is(err, repo.ErrChallengeNotFound) {
-			return ErrChallengeNotFound
+		if errors.Is(err, repo.ErrPlanNotFound) {
+			return ErrPlanNotFound
 		}
 		return err
 	}
 
 	if detail.TargetUserID != requesterID {
-		return ErrNotChallengeTarget
+		return ErrNotPlanTarget
 	}
-	if detail.Status != "PENDING" {
-		return ErrChallengeNotPending
+	if detail.Status != domain.PlanPending {
+		return ErrPlanNotPending
 	}
 
-	return s.challengeRepo.Reject(ctx, challengeID, requesterID)
+	return s.planRepo.Decline(ctx, planID, requesterID)
 }
 
-func (s *ChallengeService) GetByID(ctx context.Context, requesterID, challengeID uuid.UUID) (*domain.ChallengeDetail, error) {
-	detail, err := s.challengeRepo.GetByID(ctx, challengeID)
+func (s *PlanService) GetByID(ctx context.Context, requesterID, planID uuid.UUID) (*domain.PlanDetail, error) {
+	detail, err := s.planRepo.GetByID(ctx, planID)
 	if err != nil {
-		if errors.Is(err, repo.ErrChallengeNotFound) {
-			return nil, ErrChallengeNotFound
+		if errors.Is(err, repo.ErrPlanNotFound) {
+			return nil, ErrPlanNotFound
 		}
 		return nil, err
 	}
 
 	if detail.CreatorUserID != requesterID && detail.TargetUserID != requesterID {
-		return nil, ErrNotChallengeParticipant
+		return nil, ErrNotPlanParticipant
 	}
 	return detail, nil
 }
 
-func (s *ChallengeService) GetIncoming(ctx context.Context, userID uuid.UUID) ([]domain.ChallengeDetail, error) {
-	if err := s.challengeRepo.MarkExpiredForUser(ctx, userID); err != nil {
+func (s *PlanService) GetIncoming(ctx context.Context, userID uuid.UUID) ([]domain.PlanDetail, error) {
+	if err := s.planRepo.MarkExpiredForUser(ctx, userID); err != nil {
 		return nil, err
 	}
-	results, err := s.challengeRepo.GetIncoming(ctx, userID)
+	results, err := s.planRepo.GetIncoming(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if results == nil {
-		results = []domain.ChallengeDetail{}
+		results = []domain.PlanDetail{}
 	}
 	return results, nil
 }
 
-func (s *ChallengeService) GetOutgoing(ctx context.Context, userID uuid.UUID) ([]domain.ChallengeDetail, error) {
-	if err := s.challengeRepo.MarkExpiredForUser(ctx, userID); err != nil {
+func (s *PlanService) GetOutgoing(ctx context.Context, userID uuid.UUID) ([]domain.PlanDetail, error) {
+	if err := s.planRepo.MarkExpiredForUser(ctx, userID); err != nil {
 		return nil, err
 	}
-	results, err := s.challengeRepo.GetOutgoing(ctx, userID)
+	results, err := s.planRepo.GetOutgoing(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if results == nil {
-		results = []domain.ChallengeDetail{}
+		results = []domain.PlanDetail{}
 	}
 	return results, nil
 }

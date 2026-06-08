@@ -45,10 +45,6 @@ func (h *ProfileHandler) GetFeed(c *gin.Context) {
 		return
 	}
 
-	if events == nil {
-		events = []interface{}{}
-	}
-
 	var nextCursor interface{}
 	if cursor != nil {
 		nextCursor = cursor.UTC().Format(time.RFC3339Nano)
@@ -85,20 +81,20 @@ func (h *ProfileHandler) GetMyCheckIns(c *gin.Context) {
 	})
 }
 
-// GET /api/me/challenges
-func (h *ProfileHandler) GetMyChallenges(c *gin.Context) {
+// GET /api/me/plans
+func (h *ProfileHandler) GetMyPlans(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 	statusFilter := c.Query("status") // "active" | "completed" | "failed" | ""
 
-	results, err := h.profileService.GetMyChallenges(c.Request.Context(), userID, statusFilter)
+	results, err := h.profileService.GetMyPlans(c.Request.Context(), userID, statusFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"challenges": results,
-		"total":      len(results),
+		"plans": results,
+		"total": len(results),
 	})
 }
 

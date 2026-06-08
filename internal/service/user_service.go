@@ -17,7 +17,7 @@ var (
 	ErrProtectedCannotBePublic = errors.New("protected accounts cannot set privacy to PUBLIC")
 	ErrCannotBlockYourself     = errors.New("you cannot block yourself")
 	ErrProfilePrivate          = errors.New("this profile is private")
-	ErrUserNotVisible          = errors.New("user not found")
+	ErrUserNotVisible          = errors.New("Usuario no encontrado.")
 )
 
 const jwtBlocklistKey = "jwt:blocklist:%s"
@@ -69,14 +69,19 @@ func (s *UserService) GetProfile(ctx context.Context, requesterID uuid.UUID, use
 	}
 
 	full := &domain.FullUserProfile{
-		UserID:        target.UserID,
-		Username:      target.Username,
-		BadgeLevel:    target.BadgeLevel,
-		PointsTotal:   target.PointsTotal,
-		StreakCurrent: target.StreakCurrent,
-		StreakMax:     target.StreakMax,
-		CheckInCount:  checkInCount,
-		CreatedAt:     target.CreatedAt,
+		UserID:             target.UserID,
+		Username:           target.Username,
+		BadgeLevel:         target.BadgeLevel,
+		StreakWeeksCurrent: target.StreakWeeksCurrent,
+		StreakWeeksMax:     target.StreakWeeksMax,
+		CheckInCount:       checkInCount,
+		CreatedAt:          target.CreatedAt,
+	}
+	// points_total is only included when the target opted into the ranking —
+	// otherwise it must be omitted from the JSON entirely, not returned as null.
+	if target.RankingOptIn {
+		points := target.PointsTotal
+		full.PointsTotal = &points
 	}
 	partial := &domain.PartialUserProfile{
 		Username:   target.Username,

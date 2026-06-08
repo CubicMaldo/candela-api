@@ -18,39 +18,100 @@ func NewFeedRepository(db *pgxpool.Pool) *FeedRepository {
 	return &FeedRepository{db: db}
 }
 
-// GetFeedCheckIns returns check-ins from accepted friends, newest first.
-// Photos past their expiry are included in the event but photo_url is set to null.
-// Excludes friends with privacy_mode='PRIVATE' or account_status!='ACTIVE'.
+// GetFeedCheckIns returns the three-layer feed for a user, newest first within each layer:
+//
+//	layer 1 = accepted friends with active check-ins (last 4h)
+//	layer 2 = followed places with active check-ins (last 4h)
+//	layer 3 = general city activity (last 4h, non-PRIVATE users)
+//
+// Check-ins blocked in either direction are excluded from every layer.
+// A check-in present in multiple layers is deduplicated in Go, keeping the
+// lowest (highest-priority) layer.
 func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]domain.CheckInEvent, error) {
 	query := `
-		SELECT
-			ci.checkin_id,
-			ci.checked_in_at,
-			u.user_id, u.username, u.badge_level,
-			p.place_id, p.name, p.category,
-			CASE WHEN ci.photo_expires_at IS NOT NULL AND ci.photo_expires_at < NOW()
-			     THEN NULL ELSE ci.photo_url END AS photo_url,
-			ci.points_awarded
-		FROM check_ins ci
-		INNER JOIN users u ON u.user_id = ci.user_id
-		INNER JOIN places p ON p.place_id = ci.place_id
-		INNER JOIN friendships f ON (
-			(f.user_id_a = $1 AND f.user_id_b = ci.user_id)
-			OR (f.user_id_b = $1 AND f.user_id_a = ci.user_id)
-		)
-		WHERE f.status = 'accepted'
-		  AND u.privacy_mode != 'PRIVATE'
-		  AND u.account_status = 'ACTIVE'
-		  AND ci.validation_passed = true
+		SELECT * FROM (
+			SELECT
+				ci.checkin_id, ci.checked_in_at,
+				u.user_id, u.username, u.badge_level,
+				p.place_id, p.name, p.category,
+				CASE WHEN ci.photo_expires_at IS NOT NULL AND ci.photo_expires_at < NOW()
+				          AND ci.photo_is_permanent = false
+				     THEN NULL ELSE ci.photo_url END AS photo_url,
+				ci.photo_is_permanent,
+				ci.points_awarded,
+				1 AS priority_layer
+			FROM check_ins ci
+			INNER JOIN users u ON u.user_id = ci.user_id
+			INNER JOIN places p ON p.place_id = ci.place_id
+			INNER JOIN friendships f ON (
+				(f.user_id_a = $1 AND f.user_id_b = ci.user_id) OR
+				(f.user_id_b = $1 AND f.user_id_a = ci.user_id)
+			)
+			WHERE f.status = 'accepted'
+			  AND ci.checked_in_at > NOW() - INTERVAL '4 hours'
+			  AND ci.user_id NOT IN (
+			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
+			      FROM friendships
+			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
+			  )
+
+			UNION ALL
+
+			SELECT
+				ci.checkin_id, ci.checked_in_at,
+				u.user_id, u.username, u.badge_level,
+				p.place_id, p.name, p.category,
+				CASE WHEN ci.photo_expires_at IS NOT NULL AND ci.photo_expires_at < NOW()
+				          AND ci.photo_is_permanent = false
+				     THEN NULL ELSE ci.photo_url END AS photo_url,
+				ci.photo_is_permanent,
+				ci.points_awarded,
+				2 AS priority_layer
+			FROM check_ins ci
+			INNER JOIN users u ON u.user_id = ci.user_id
+			INNER JOIN places p ON p.place_id = ci.place_id
+			INNER JOIN follows fol ON fol.place_id = ci.place_id AND fol.follower_id = $1
+			WHERE ci.checked_in_at > NOW() - INTERVAL '4 hours'
+			  AND ci.user_id != $1
+			  AND ci.user_id NOT IN (
+			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
+			      FROM friendships
+			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
+			  )
+
+			UNION ALL
+
+			SELECT
+				ci.checkin_id, ci.checked_in_at,
+				u.user_id, u.username, u.badge_level,
+				p.place_id, p.name, p.category,
+				CASE WHEN ci.photo_expires_at IS NOT NULL AND ci.photo_expires_at < NOW()
+				          AND ci.photo_is_permanent = false
+				     THEN NULL ELSE ci.photo_url END AS photo_url,
+				ci.photo_is_permanent,
+				ci.points_awarded,
+				3 AS priority_layer
+			FROM check_ins ci
+			INNER JOIN users u ON u.user_id = ci.user_id
+			INNER JOIN places p ON p.place_id = ci.place_id
+			WHERE ci.checked_in_at > NOW() - INTERVAL '4 hours'
+			  AND u.privacy_mode != 'PRIVATE'
+			  AND ci.user_id != $1
+			  AND ci.user_id NOT IN (
+			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
+			      FROM friendships
+			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
+			  )
+		) feed
 	`
 	args := []interface{}{userID}
 
 	if before != nil {
-		query += ` AND ci.checked_in_at < $2`
+		query += ` WHERE checked_in_at < $2`
 		args = append(args, *before)
 	}
 
-	query += ` ORDER BY ci.checked_in_at DESC LIMIT $` + itoa(len(args)+1)
+	query += ` ORDER BY priority_layer ASC, checked_in_at DESC LIMIT $` + itoa(len(args)+1)
 	args = append(args, limit)
 
 	rows, err := r.db.Query(ctx, query, args...)
@@ -59,83 +120,26 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 	}
 	defer rows.Close()
 
+	seen := make(map[uuid.UUID]bool)
 	var events []domain.CheckInEvent
 	for rows.Next() {
 		var e domain.CheckInEvent
+		var priorityLayer int
 		e.Type = "checkin"
 		if err := rows.Scan(
 			&e.EventID, &e.Timestamp,
 			&e.User.UserID, &e.User.Username, &e.User.BadgeLevel,
 			&e.Place.PlaceID, &e.Place.Name, &e.Place.Category,
-			&e.PhotoURL,
+			&e.PhotoURL, &e.PhotoIsPermanent,
 			&e.PointsAwarded,
+			&priorityLayer,
 		); err != nil {
 			return nil, err
 		}
-		events = append(events, e)
-	}
-	return events, rows.Err()
-}
-
-// GetFeedChallenges returns completed challenges involving at least one accepted friend,
-// where both participants are ACTIVE and not PRIVATE. Newest first.
-func (r *FeedRepository) GetFeedChallenges(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]domain.ChallengeCompletedEvent, error) {
-	query := `
-		SELECT
-			c.challenge_id,
-			c.completed_at,
-			cu.user_id, cu.username, cu.badge_level,
-			tu.user_id, tu.username, tu.badge_level,
-			p.place_id, p.name, p.category
-		FROM challenges c
-		INNER JOIN users cu ON cu.user_id = c.creator_user_id
-		INNER JOIN users tu ON tu.user_id = c.target_user_id
-		INNER JOIN places p  ON p.place_id  = c.place_id
-		WHERE c.status = 'COMPLETED'
-		  AND cu.privacy_mode != 'PRIVATE' AND cu.account_status = 'ACTIVE'
-		  AND tu.privacy_mode != 'PRIVATE' AND tu.account_status = 'ACTIVE'
-		  AND (
-			c.creator_user_id IN (
-				SELECT CASE WHEN f.user_id_a = $1 THEN f.user_id_b ELSE f.user_id_a END
-				FROM friendships f
-				WHERE (f.user_id_a = $1 OR f.user_id_b = $1) AND f.status = 'accepted'
-			)
-			OR
-			c.target_user_id IN (
-				SELECT CASE WHEN f.user_id_a = $1 THEN f.user_id_b ELSE f.user_id_a END
-				FROM friendships f
-				WHERE (f.user_id_a = $1 OR f.user_id_b = $1) AND f.status = 'accepted'
-			)
-		  )
-	`
-	args := []interface{}{userID}
-
-	if before != nil {
-		query += ` AND c.completed_at < $2`
-		args = append(args, *before)
-	}
-
-	query += ` ORDER BY c.completed_at DESC LIMIT $` + itoa(len(args)+1)
-	args = append(args, limit)
-
-	rows, err := r.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var events []domain.ChallengeCompletedEvent
-	for rows.Next() {
-		var e domain.ChallengeCompletedEvent
-		e.Type = "challenge_completed"
-		if err := rows.Scan(
-			&e.EventID, &e.Timestamp,
-			&e.Creator.UserID, &e.Creator.Username, &e.Creator.BadgeLevel,
-			&e.Target.UserID, &e.Target.Username, &e.Target.BadgeLevel,
-			&e.Place.PlaceID, &e.Place.Name, &e.Place.Category,
-		); err != nil {
-			return nil, err
+		if seen[e.EventID] {
+			continue
 		}
+		seen[e.EventID] = true
 		events = append(events, e)
 	}
 	return events, rows.Err()

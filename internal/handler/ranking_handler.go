@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/tuusuario/nomad-api/internal/domain"
 	"github.com/tuusuario/nomad-api/internal/service"
 )
 
@@ -15,6 +16,24 @@ type RankingHandler struct {
 
 func NewRankingHandler(rs *service.RankingService) *RankingHandler {
 	return &RankingHandler{rankingService: rs}
+}
+
+// PATCH /api/me/ranking
+func (h *RankingHandler) UpdateOptIn(c *gin.Context) {
+	userID := c.MustGet("userID").(uuid.UUID)
+
+	var req domain.RankingOptInRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.rankingService.UpdateOptIn(c.Request.Context(), userID, *req.RankingOptIn); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ranking_opt_in": *req.RankingOptIn})
 }
 
 // GET /api/rankings/global

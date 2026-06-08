@@ -7,26 +7,29 @@ import (
 )
 
 type User struct {
-	UserID           uuid.UUID  `json:"id"                db:"user_id"`
-	Email            string     `json:"email"             db:"email"`
-	Username         string     `json:"username"          db:"username"`
-	PasswordHash     string     `json:"-"                 db:"password_hash"`
-	BirthDate        time.Time  `json:"birth_date"        db:"birth_date"`
-	Age              int        `json:"age"               db:"age"`
-	IsProtected      bool       `json:"is_protected"      db:"is_protected"`
-	AccountStatus    string     `json:"account_status"    db:"account_status"`
-	PrivacyMode      string     `json:"privacy_mode"      db:"privacy_mode"`
-	GuardianContact  *string    `json:"guardian_contact"  db:"guardian_contact"`
-	GuardianVerified bool       `json:"guardian_verified" db:"guardian_verified"`
-	GuardianToken    *uuid.UUID `json:"-"                 db:"guardian_token"`
-	PointsTotal      int        `json:"points_total"      db:"points_total"`
-	PointsSeason     int        `json:"points_season"     db:"points_season"`
-	BadgeLevel       string     `json:"badge_level"       db:"badge_level"`
-	StreakCurrent    int        `json:"streak_current"    db:"streak_current"`
-	StreakMax        int        `json:"streak_max"        db:"streak_max"`
-	StreakLastCheckin *time.Time `json:"streak_last_checkin" db:"streak_last_checkin"`
-	CreatedAt        time.Time  `json:"created_at"        db:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"        db:"updated_at"`
+	UserID             uuid.UUID  `json:"id"                db:"user_id"`
+	Email              string     `json:"email"             db:"email"`
+	Username           string     `json:"username"          db:"username"`
+	PasswordHash       string     `json:"-"                 db:"password_hash"`
+	BirthDate          time.Time  `json:"birth_date"        db:"birth_date"`
+	Age                int        `json:"age"               db:"age"`
+	IsProtected        bool       `json:"is_protected"      db:"is_protected"`
+	AccountStatus      string     `json:"account_status"    db:"account_status"`
+	PrivacyMode        string     `json:"privacy_mode"      db:"privacy_mode"`
+	GuardianContact    *string    `json:"guardian_contact"  db:"guardian_contact"`
+	GuardianVerified   bool       `json:"guardian_verified" db:"guardian_verified"`
+	GuardianToken      *uuid.UUID `json:"-"                 db:"guardian_token"`
+	PointsTotal        int        `json:"points_total"      db:"points_total"`
+	PointsSeason       int        `json:"points_season"     db:"points_season"`
+	BadgeLevel         string     `json:"badge_level"       db:"badge_level"`
+	StreakWeeksCurrent int        `json:"streak_weeks_current" db:"streak_weeks_current"`
+	StreakWeeksMax     int        `json:"streak_weeks_max"     db:"streak_weeks_max"`
+	StreakWeekCheckins int        `json:"streak_week_checkins" db:"streak_week_checkins"`
+	StreakWeekStart    *time.Time `json:"streak_week_start,omitempty"   db:"streak_week_start"`
+	StreakLastCheckin  *time.Time `json:"streak_last_checkin,omitempty" db:"streak_last_checkin"`
+	RankingOptIn       bool       `json:"ranking_opt_in"    db:"ranking_opt_in"`
+	CreatedAt          time.Time  `json:"created_at"        db:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"        db:"updated_at"`
 }
 
 // CalculateAge returns the user's current age in years based on BirthDate.

@@ -68,7 +68,7 @@ func AuthMiddleware(secret string, rdb *redis.Client) gin.HandlerFunc {
 		accountStatus, _ := claims["account_status"].(string)
 
 		if accountStatus == "SUSPENDED" || accountStatus == "DELETED" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "account is not active"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Tu cuenta está suspendida. Escríbenos si crees que es un error."})
 			return
 		}
 
