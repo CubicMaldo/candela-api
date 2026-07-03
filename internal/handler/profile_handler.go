@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/tuusuario/nomad-api/internal/repo"
 	"github.com/tuusuario/nomad-api/internal/service"
 )
 
@@ -25,6 +26,10 @@ func (h *ProfileHandler) GetMe(c *gin.Context) {
 
 	profile, err := h.profileService.GetMyProfile(c.Request.Context(), userID)
 	if err != nil {
+		if err == repo.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -195,6 +195,9 @@ func (r *UserRepository) GetMyProfile(ctx context.Context, userID uuid.UUID) (*d
 		&p.CheckInCount, &p.FriendsCount, &p.CompletedPlansCount,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, ErrUserNotFound
+		}
 		return nil, err
 	}
 	return &p, nil

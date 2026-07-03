@@ -74,7 +74,7 @@ test: ## Corre tests
 	$(COMPOSE) exec api go test ./...
 
 # ── Setup inicial ────────────────────────────────────────
-setup: ## ⭐ Primer uso: copia .env y levanta servicios
+setup: ## Primer uso: copia .env y levanta servicios
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		echo ".env creado desde .env.example - edita los valores antes de continuar"; \
