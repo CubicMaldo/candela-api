@@ -32,7 +32,7 @@ func Load() (Config, error) {
 		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
 		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
 		StorageSecretKey: os.Getenv("STORAGE_SECRET_KEY"),
-		StorageBucket:    getEnv("STORAGE_BUCKET", "nomad-photos"),
+		StorageBucket:    getEnv("STORAGE_BUCKET", "candela-photos"),
 		StorageUseSSL:    os.Getenv("STORAGE_USE_SSL") == "true",
 	}
 

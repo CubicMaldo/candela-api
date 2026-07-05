@@ -6,13 +6,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 var (
 	ErrPlaceNotFound = errors.New("Este lugar no está disponible en este momento.")
-	ErrNotFollowing  = errors.New("no seguías este lugar")
+	ErrNotFollowing  = errors.New("No seguías este lugar.")
 )
 
 type FollowService struct {

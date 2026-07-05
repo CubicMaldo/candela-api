@@ -12,12 +12,12 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/tuusuario/nomad-api/internal/config"
-	"github.com/tuusuario/nomad-api/internal/infra/postgres"
-	redisclient "github.com/tuusuario/nomad-api/internal/infra/redis"
-	"github.com/tuusuario/nomad-api/internal/infra/storage"
-	"github.com/tuusuario/nomad-api/internal/web"
-	"github.com/tuusuario/nomad-api/internal/webdeps"
+	"github.com/tuusuario/candela-api/internal/config"
+	"github.com/tuusuario/candela-api/internal/infra/postgres"
+	redisclient "github.com/tuusuario/candela-api/internal/infra/redis"
+	"github.com/tuusuario/candela-api/internal/infra/storage"
+	"github.com/tuusuario/candela-api/internal/web"
+	"github.com/tuusuario/candela-api/internal/webdeps"
 )
 
 func main() {

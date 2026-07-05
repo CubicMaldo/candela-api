@@ -8,16 +8,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 var (
-	ErrCannotFriendYourself       = errors.New("you cannot send a friend request to yourself")
-	ErrFriendRequestAlreadyExists = errors.New("a friend request already exists")
-	ErrAlreadyFriends             = errors.New("you are already friends")
-	ErrNotRecipient               = errors.New("you are not the recipient of this request")
-	ErrNotRequester               = errors.New("you are not the sender of this request")
+	ErrCannotFriendYourself       = errors.New("No puedes enviarte una solicitud a ti mismo.")
+	ErrFriendRequestAlreadyExists = errors.New("Ya hay una solicitud pendiente con esta persona.")
+	ErrAlreadyFriends             = errors.New("Ya son amigos.")
+	ErrNotRecipient               = errors.New("Esta solicitud no es para ti.")
+	ErrNotRequester               = errors.New("Esta solicitud no es tuya.")
 )
 
 type FriendService struct {

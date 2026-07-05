@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/service"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/service"
 )
 
 type PlaceHandler struct {
@@ -66,6 +66,7 @@ func (h *PlaceHandler) GetDetail(c *gin.Context) {
 
 // GET /api/places/:place_id/feed
 func (h *PlaceHandler) GetEventFeed(c *gin.Context) {
+	requesterID := c.MustGet("userID").(uuid.UUID)
 	placeID, err := uuid.Parse(c.Param("place_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid place_id"})
@@ -75,7 +76,7 @@ func (h *PlaceHandler) GetEventFeed(c *gin.Context) {
 	limit := parseLimitParam(c.Query("limit"), 20, 50)
 	before := parseBeforeParam(c.Query("before"))
 
-	feed, err := h.placeService.GetEventFeed(c.Request.Context(), placeID, limit, before)
+	feed, err := h.placeService.GetEventFeed(c.Request.Context(), requesterID, placeID, limit, before)
 	if err != nil {
 		if err == service.ErrPlaceNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})

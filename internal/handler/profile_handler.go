@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/repo"
-	"github.com/tuusuario/nomad-api/internal/service"
+	"github.com/tuusuario/candela-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/service"
 )
 
 type ProfileHandler struct {
@@ -89,7 +89,17 @@ func (h *ProfileHandler) GetMyCheckIns(c *gin.Context) {
 // GET /api/me/plans
 func (h *ProfileHandler) GetMyPlans(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	statusFilter := c.Query("status") // "active" | "completed" | "failed" | ""
+	statusFilter := c.Query("status")
+	// Public contract uses Spanish filter values (CANDELA_API_CHANGELOG.md §2);
+	// English values remain accepted for compatibility.
+	switch statusFilter {
+	case "activos":
+		statusFilter = "active"
+	case "concretados":
+		statusFilter = "completed"
+	case "no_concretados":
+		statusFilter = "failed"
+	}
 
 	results, err := h.profileService.GetMyPlans(c.Request.Context(), userID, statusFilter)
 	if err != nil {

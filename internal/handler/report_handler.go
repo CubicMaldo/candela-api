@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/service"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/service"
 )
 
 type ReportHandler struct {
@@ -35,6 +35,8 @@ func (h *ReportHandler) Create(c *gin.Context) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case service.ErrReportTargetNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case service.ErrDuplicateReport:
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}

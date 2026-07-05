@@ -1,4 +1,4 @@
-module github.com/tuusuario/nomad-api
+module github.com/tuusuario/candela-api
 
 go 1.26
 

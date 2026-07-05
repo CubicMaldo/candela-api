@@ -16,7 +16,7 @@ COPY . .
 # Compilar binario estático (sin dependencias externas)
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s" \
-    -o nomad-api \
+    -o candela-api \
     ./cmd/server
 
 # ── Stage 2: Runtime ────────────────────────────
@@ -27,8 +27,8 @@ RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /app
 
-COPY --from=builder /app/nomad-api .
+COPY --from=builder /app/candela-api .
 
 EXPOSE 8080
 
-CMD ["./nomad-api"]
+CMD ["./candela-api"]

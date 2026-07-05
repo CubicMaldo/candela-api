@@ -20,7 +20,7 @@ CREATE TABLE users (
     guardian_token        UUID        DEFAULT uuid_generate_v4(),
     points_total          INTEGER     NOT NULL DEFAULT 0,
     points_season         INTEGER     NOT NULL DEFAULT 0,
-    badge_level           VARCHAR(50) NOT NULL DEFAULT 'Explorador Nuevo',
+    badge_level           VARCHAR(50) NOT NULL DEFAULT 'Nuevo en la vuelta',
     streak_weeks_current  INTEGER     NOT NULL DEFAULT 0,
     streak_weeks_max      INTEGER     NOT NULL DEFAULT 0,
     streak_week_checkins  INTEGER     NOT NULL DEFAULT 0,

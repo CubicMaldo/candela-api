@@ -9,14 +9,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 var (
-	ErrProtectedCannotBePublic = errors.New("protected accounts cannot set privacy to PUBLIC")
-	ErrCannotBlockYourself     = errors.New("you cannot block yourself")
-	ErrProfilePrivate          = errors.New("this profile is private")
+	ErrProtectedCannotBePublic = errors.New("Las cuentas protegidas no pueden ser públicas.")
+	ErrCannotBlockYourself     = errors.New("No te puedes bloquear a ti mismo.")
+	ErrProfilePrivate          = errors.New("Este perfil es privado.")
 	ErrUserNotVisible          = errors.New("Usuario no encontrado.")
 )
 

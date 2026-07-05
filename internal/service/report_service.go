@@ -6,13 +6,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 var (
 	ErrCannotReportSelf     = errors.New("No puedes reportarte a ti mismo.")
-	ErrReportTargetNotFound = errors.New("the reported content no longer exists")
+	ErrReportTargetNotFound = errors.New("El contenido reportado ya no existe.")
+	ErrDuplicateReport      = errors.New("Ya reportaste este contenido.")
 )
 
 type ReportService struct {
@@ -49,6 +50,9 @@ func (s *ReportService) CreateReport(ctx context.Context, reporterID uuid.UUID, 
 		Comment:    req.Comment,
 	}
 	if err := s.reportRepo.Create(ctx, report); err != nil {
+		if errors.Is(err, repo.ErrDuplicateReport) {
+			return nil, ErrDuplicateReport
+		}
 		return nil, err
 	}
 	return report, nil

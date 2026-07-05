@@ -70,3 +70,20 @@ type AuthResponse struct {
 type GoogleAuthRequest struct {
 	IDToken string `json:"id_token" binding:"required"`
 }
+
+// GoogleRegisterRequest completes registration for a Google account whose
+// email has no Candela user yet. Email comes from the verified ID token,
+// never from the client.
+type GoogleRegisterRequest struct {
+	IDToken   string `json:"id_token"   binding:"required"`
+	Username  string `json:"username"   binding:"required,min=3,max=50"`
+	BirthDate string `json:"birth_date" binding:"required"` // YYYY-MM-DD
+}
+
+// GoogleNeedsRegistration is returned by POST /api/auth/google when the
+// Google email is valid but not registered: the client must collect the
+// remaining profile fields and call POST /api/auth/google/register.
+type GoogleNeedsRegistration struct {
+	NeedsRegistration bool   `json:"needs_registration"`
+	Email             string `json:"email"`
+}

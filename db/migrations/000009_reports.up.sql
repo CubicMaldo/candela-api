@@ -20,3 +20,7 @@ CREATE TABLE reports (
 CREATE INDEX idx_reports_status   ON reports (status);
 CREATE INDEX idx_reports_target   ON reports (target_type, target_id);
 CREATE INDEX idx_reports_reporter ON reports (reporter_id);
+
+-- A user can only report the same content once (API contract: 409 on repeat).
+CREATE UNIQUE INDEX idx_reports_unique_per_target
+    ON reports (reporter_id, target_type, target_id);

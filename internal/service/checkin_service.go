@@ -9,9 +9,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/infra/storage"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/infra/storage"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 var (

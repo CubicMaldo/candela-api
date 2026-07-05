@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 type FeedRepository struct {
@@ -38,7 +38,11 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				          AND ci.photo_is_permanent = false
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
-				ci.points_awarded,
+				TRUE AS is_friend,
+				EXISTS (
+					SELECT 1 FROM follows fol2
+					WHERE fol2.follower_id = $1 AND fol2.place_id = ci.place_id
+				) AS is_followed,
 				1 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
@@ -65,7 +69,13 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				          AND ci.photo_is_permanent = false
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
-				ci.points_awarded,
+				EXISTS (
+					SELECT 1 FROM friendships f2
+					WHERE ((f2.user_id_a = $1 AND f2.user_id_b = ci.user_id)
+					    OR (f2.user_id_b = $1 AND f2.user_id_a = ci.user_id))
+					  AND f2.status = 'accepted'
+				) AS is_friend,
+				TRUE AS is_followed,
 				2 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
@@ -89,7 +99,16 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				          AND ci.photo_is_permanent = false
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
-				ci.points_awarded,
+				EXISTS (
+					SELECT 1 FROM friendships f2
+					WHERE ((f2.user_id_a = $1 AND f2.user_id_b = ci.user_id)
+					    OR (f2.user_id_b = $1 AND f2.user_id_a = ci.user_id))
+					  AND f2.status = 'accepted'
+				) AS is_friend,
+				EXISTS (
+					SELECT 1 FROM follows fol2
+					WHERE fol2.follower_id = $1 AND fol2.place_id = ci.place_id
+				) AS is_followed,
 				3 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
@@ -124,15 +143,14 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 	var events []domain.CheckInEvent
 	for rows.Next() {
 		var e domain.CheckInEvent
-		var priorityLayer int
 		e.Type = "checkin"
 		if err := rows.Scan(
 			&e.EventID, &e.Timestamp,
 			&e.User.UserID, &e.User.Username, &e.User.BadgeLevel,
 			&e.Place.PlaceID, &e.Place.Name, &e.Place.Category,
 			&e.PhotoURL, &e.PhotoIsPermanent,
-			&e.PointsAwarded,
-			&priorityLayer,
+			&e.User.IsFriend, &e.Place.IsFollowed,
+			&e.PriorityLayer,
 		); err != nil {
 			return nil, err
 		}

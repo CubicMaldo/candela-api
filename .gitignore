@@ -1,6 +1,6 @@
 # Binarios
 tmp/
-nomad-api
+candela-api
 
 # Variables de entorno — NUNCA al repo
 .env

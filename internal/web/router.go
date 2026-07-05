@@ -5,11 +5,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/tuusuario/nomad-api/internal/handler"
-	"github.com/tuusuario/nomad-api/internal/repo"
-	"github.com/tuusuario/nomad-api/internal/service"
-	"github.com/tuusuario/nomad-api/internal/web/middleware"
-	"github.com/tuusuario/nomad-api/internal/webdeps"
+	"github.com/tuusuario/candela-api/internal/handler"
+	"github.com/tuusuario/candela-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/service"
+	"github.com/tuusuario/candela-api/internal/web/middleware"
+	"github.com/tuusuario/candela-api/internal/webdeps"
 )
 
 func NewRouter(deps webdeps.Dependencies) *gin.Engine {
@@ -65,6 +65,7 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/google", authHandler.GoogleLogin)
+			auth.POST("/google/register", authHandler.GoogleRegister)
 		}
 
 		protected := api.Group("")
@@ -125,11 +126,14 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 			plans := protected.Group("/plans")
 			{
 				plans.POST("", planHandler.Create)
+				plans.GET("/discover", planHandler.Discover)
 				plans.GET("/incoming", planHandler.GetIncoming)
 				plans.GET("/outgoing", planHandler.GetOutgoing)
 				plans.GET("/:plan_id", planHandler.GetByID)
 				plans.POST("/:plan_id/accept", planHandler.Accept)
 				plans.POST("/:plan_id/decline", planHandler.Decline)
+				plans.POST("/:plan_id/join", planHandler.Join)
+				plans.DELETE("/:plan_id", planHandler.Cancel)
 			}
 		}
 	}

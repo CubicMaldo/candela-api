@@ -11,35 +11,28 @@ type FeedUser struct {
 	UserID     uuid.UUID `json:"user_id"`
 	Username   string    `json:"username"`
 	BadgeLevel string    `json:"badge_level"`
+	IsFriend   bool      `json:"is_friend"`
 }
 
 // FeedPlace is the minimal place info embedded in feed events.
 type FeedPlace struct {
-	PlaceID  uuid.UUID `json:"place_id"`
-	Name     string    `json:"name"`
-	Category string    `json:"category"`
+	PlaceID    uuid.UUID `json:"place_id"`
+	Name       string    `json:"name"`
+	Category   string    `json:"category"`
+	IsFollowed bool      `json:"is_followed"`
 }
 
-// CheckInEvent is a feed item representing a friend's check-in.
+// CheckInEvent is a feed item representing a check-in with photo.
+// Points are private (spec §14.1) and are never exposed in feeds.
 type CheckInEvent struct {
 	Type             string    `json:"type"`
 	EventID          uuid.UUID `json:"event_id"`
 	Timestamp        time.Time `json:"timestamp"`
+	PriorityLayer    int       `json:"priority_layer,omitempty"`
 	User             FeedUser  `json:"user"`
 	Place            FeedPlace `json:"place"`
 	PhotoURL         *string   `json:"photo_url"`
 	PhotoIsPermanent bool      `json:"photo_is_permanent"`
-	PointsAwarded    int       `json:"points_awarded"`
-}
-
-// PlanCompletedEvent is a feed item representing a completed plan involving friends.
-type PlanCompletedEvent struct {
-	Type      string    `json:"type"`
-	EventID   uuid.UUID `json:"event_id"`
-	Timestamp time.Time `json:"timestamp"`
-	Creator   FeedUser  `json:"creator"`
-	Target    FeedUser  `json:"target"`
-	Place     FeedPlace `json:"place"`
 }
 
 // MyProfile is the authenticated user's own profile, including aggregated counts.
@@ -71,12 +64,13 @@ type MyProfile struct {
 
 // MyCheckIn is a single item in the user's own check-in history.
 type MyCheckIn struct {
-	CheckInID     uuid.UUID `json:"checkin_id"`
-	Place         FeedPlace `json:"place"`
-	PhotoURL      *string   `json:"photo_url"`
-	PointsAwarded int       `json:"points_awarded"`
-	IsFirstOfDay  bool      `json:"is_first_of_day"`
-	CheckedInAt   time.Time `json:"checked_in_at"`
+	CheckInID        uuid.UUID `json:"checkin_id"`
+	Place            FeedPlace `json:"place"`
+	PhotoURL         *string   `json:"photo_url"`
+	PhotoIsPermanent bool      `json:"photo_is_permanent"`
+	PointsAwarded    int       `json:"points_awarded"`
+	IsFirstOfDay     bool      `json:"is_first_of_day"`
+	CheckedInAt      time.Time `json:"checked_in_at"`
 }
 
 // MyPlanUser is embedded in MyPlan for creator and target info.
@@ -87,16 +81,20 @@ type MyPlanUser struct {
 }
 
 // MyPlan is an item in the user's plan history, including role and participant info.
+// Target is nil for open (PUBLIC/FRIENDS) plans, which have no single invitee.
 type MyPlan struct {
-	PlanID        uuid.UUID  `json:"plan_id"`
-	Status        string     `json:"status"`
-	Message       *string    `json:"message,omitempty"`
-	DeadlineHours int        `json:"deadline_hours"`
-	CreatedAt     time.Time  `json:"created_at"`
-	DeadlineAt    time.Time  `json:"deadline_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	Creator       MyPlanUser `json:"creator"`
-	Target        MyPlanUser `json:"target"`
-	Place         FeedPlace  `json:"place"`
-	Role          string     `json:"role"`
+	PlanID           uuid.UUID      `json:"plan_id"`
+	Status           PlanStatus     `json:"status"`
+	Visibility       PlanVisibility `json:"visibility"`
+	Message          *string        `json:"message,omitempty"`
+	DeadlineHours    int            `json:"deadline_hours"`
+	CreatedAt        time.Time      `json:"created_at"`
+	DeadlineAt       time.Time      `json:"deadline_at"`
+	CompletedAt      *time.Time     `json:"concretado_at,omitempty"`
+	Creator          MyPlanUser     `json:"creator"`
+	Target           *MyPlanUser    `json:"target,omitempty"`
+	Place            FeedPlace      `json:"place"`
+	Role             string         `json:"role"`
+	ParticipantCount int            `json:"participant_count"`
+	MyStatus         string         `json:"my_status,omitempty"`
 }

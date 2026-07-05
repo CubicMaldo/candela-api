@@ -6,9 +6,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -35,6 +36,10 @@ func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 		&u.UserID, &u.Age, &u.IsProtected, &u.PointsTotal, &u.BadgeLevel, &u.CreatedAt, &u.UpdatedAt,
 	)
 
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		return ErrUserAlreadyExists
+	}
 	return err
 }
 
@@ -180,8 +185,8 @@ func (r *UserRepository) GetMyProfile(ctx context.Context, userID uuid.UUID) (*d
 			 WHERE ci.user_id = $1 AND ci.validation_passed = true) AS check_in_count,
 			(SELECT COUNT(*) FROM friendships f
 			 WHERE (f.user_id_a = $1 OR f.user_id_b = $1) AND f.status = 'accepted') AS friends_count,
-			(SELECT COUNT(*) FROM plans pl
-			 WHERE (pl.creator_user_id = $1 OR pl.target_user_id = $1) AND pl.status = 'COMPLETED') AS completed_plans_count
+			(SELECT COUNT(*) FROM plan_participants pp
+			 WHERE pp.user_id = $1 AND pp.status = 'COMPLETED') AS completed_plans_count
 		FROM users u
 		WHERE u.user_id = $1
 	`, userID).Scan(

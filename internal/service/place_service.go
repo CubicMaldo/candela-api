@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
-	"github.com/tuusuario/nomad-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/repo"
 )
 
 type PlaceService struct {
@@ -79,7 +79,7 @@ func (s *PlaceService) GetDetail(ctx context.Context, requesterID, placeID uuid.
 
 // GetEventFeed returns the live event feed for a place: check-ins with photos
 // from the last 4 hours, newest first.
-func (s *PlaceService) GetEventFeed(ctx context.Context, placeID uuid.UUID, limit int, before *time.Time) (*domain.PlaceEventFeed, error) {
+func (s *PlaceService) GetEventFeed(ctx context.Context, requesterID, placeID uuid.UUID, limit int, before *time.Time) (*domain.PlaceEventFeed, error) {
 	place, err := s.placeRepo.GetByID(ctx, placeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -88,7 +88,7 @@ func (s *PlaceService) GetEventFeed(ctx context.Context, placeID uuid.UUID, limi
 		return nil, err
 	}
 
-	events, err := s.checkinRepo.GetEventFeed(ctx, placeID, limit, before)
+	events, err := s.checkinRepo.GetEventFeed(ctx, placeID, requesterID, limit, before)
 	if err != nil {
 		return nil, err
 	}

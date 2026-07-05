@@ -29,16 +29,16 @@ INSERT INTO users (
     is_protected, account_status, privacy_mode, points_total, points_season,
     badge_level, streak_weeks_current, streak_weeks_max, ranking_opt_in
 ) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'ana.garcia@example.com',   'ana_garcia',   '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1999-03-12', 27, false, 'ACTIVE', 'PUBLIC',  1240, 320, 'Explorador Veterano', 3, 5, true),
-    ('22222222-2222-2222-2222-222222222222', 'carlos.ruiz@example.com',  'carlos_ruiz',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2001-07-23', 24, false, 'ACTIVE', 'FRIENDS', 860,  210, 'Explorador Activo',   1, 2, false),
-    ('33333333-3333-3333-3333-333333333333', 'laura.fernandez@example.com', 'laura_fdez', '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2003-11-02', 22, false, 'ACTIVE', 'PUBLIC',  430,  120, 'Explorador Nuevo',    0, 1, true),
-    ('44444444-4444-4444-4444-444444444444', 'mateo.lopez@example.com',  'mateo_lopez',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2008-01-15', 18, true,  'ACTIVE', 'FRIENDS', 95,   95,  'Explorador Nuevo',    0, 0, false),
-    ('55555555-5555-5555-5555-555555555555', 'sofia.martinez@example.com', 'sofia_mtz',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1997-09-30', 28, false, 'ACTIVE', 'PRIVATE', 2100, 540, 'Leyenda Local',       6, 8, true),
-    ('66666666-6666-6666-6666-666666666666', 'pedro.sanchez@example.com', 'pedro_sanchez', '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2006-05-18', 20, false, 'PENDING', 'FRIENDS', 0,   0,   'Explorador Nuevo',    0, 0, false),
+    ('11111111-1111-1111-1111-111111111111', 'ana.garcia@example.com',   'ana_garcia',   '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1999-03-12', 27, false, 'ACTIVE', 'PUBLIC',  1240, 320, 'Parroquiano',        3, 5, true),
+    ('22222222-2222-2222-2222-222222222222', 'carlos.ruiz@example.com',  'carlos_ruiz',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2001-07-23', 24, false, 'ACTIVE', 'FRIENDS', 860,  210, 'Parroquiano',        1, 2, false),
+    ('33333333-3333-3333-3333-333333333333', 'laura.fernandez@example.com', 'laura_fdez', '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2003-11-02', 22, false, 'ACTIVE', 'PUBLIC',  430,  120, 'Callejero',          0, 1, true),
+    ('44444444-4444-4444-4444-444444444444', 'mateo.lopez@example.com',  'mateo_lopez',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2008-01-15', 18, true,  'ACTIVE', 'FRIENDS', 95,   95,  'Nuevo en la vuelta', 0, 0, false),
+    ('55555555-5555-5555-5555-555555555555', 'sofia.martinez@example.com', 'sofia_mtz',  '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1997-09-30', 28, false, 'ACTIVE', 'PRIVATE', 2100, 540, 'Teso',               6, 8, true),
+    ('66666666-6666-6666-6666-666666666666', 'pedro.sanchez@example.com', 'pedro_sanchez', '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '2006-05-18', 20, false, 'PENDING', 'FRIENDS', 0,   0,   'Nuevo en la vuelta', 0, 0, false),
 
     -- Usuario admin (sin columna de rol en el esquema; se identifica por username/email
     -- y se usa como revisor en `reports.reviewed_by` para simular moderación)
-    ('99999999-9999-9999-9999-999999999999', 'admin@candela.example.com', 'admin',        '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1990-01-01', 36, false, 'ACTIVE', 'PRIVATE', 0,    0,   'Administrador',       0, 0, false);
+    ('99999999-9999-9999-9999-999999999999', 'admin@candela.example.com', 'admin',        '$2a$10$eUY8NKUlQg6/065ZWE2/NuLFR6JegcGKztjY9ODdd/6el6i7gRVmW', '1990-01-01', 36, false, 'ACTIVE', 'PRIVATE', 0,    0,   'Nuevo en la vuelta', 0, 0, false);
 
 -- ── Negocios ─────────────────────────────────────────────
 INSERT INTO businesses (business_id, legal_name, contact_email, plan, is_verified) VALUES

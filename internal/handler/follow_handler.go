@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/nomad-api/internal/service"
+	"github.com/tuusuario/candela-api/internal/service"
 )
 
 type FollowHandler struct {

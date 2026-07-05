@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 var ErrCheckInNotFound = errors.New("check-in not found")
@@ -118,6 +118,7 @@ func (r *CheckInRepository) UpdateUserPoints(ctx context.Context, userID uuid.UU
 		UPDATE users
 		SET points_total  = points_total  + $1,
 		    points_season = points_season + $1,
+		    badge_level   = `+badgeCaseSQL("points_total + $1")+`,
 		    updated_at    = NOW()
 		WHERE user_id = $2
 	`, points, userID)
@@ -146,6 +147,7 @@ func (r *CheckInRepository) GetMyCheckIns(ctx context.Context, userID uuid.UUID,
 			CASE WHEN ci.photo_expires_at IS NOT NULL AND ci.photo_expires_at < NOW()
 			          AND ci.photo_is_permanent = false
 			     THEN NULL ELSE ci.photo_url END AS photo_url,
+			ci.photo_is_permanent,
 			ci.points_awarded, ci.is_first_of_day, ci.checked_in_at
 		FROM check_ins ci
 		INNER JOIN places p ON p.place_id = ci.place_id
@@ -173,7 +175,7 @@ func (r *CheckInRepository) GetMyCheckIns(ctx context.Context, userID uuid.UUID,
 		if err := rows.Scan(
 			&c.CheckInID,
 			&c.Place.PlaceID, &c.Place.Name, &c.Place.Category,
-			&c.PhotoURL,
+			&c.PhotoURL, &c.PhotoIsPermanent,
 			&c.PointsAwarded, &c.IsFirstOfDay, &c.CheckedInAt,
 		); err != nil {
 			return nil, err
@@ -183,8 +185,10 @@ func (r *CheckInRepository) GetMyCheckIns(ctx context.Context, userID uuid.UUID,
 	return results, rows.Err()
 }
 
-// UpdateStreakFields persists the user's weekly streak counters and badge_level.
+// UpdateStreakFields persists the user's weekly streak counters.
 // Call after updateWeeklyStreak has computed the new values on the in-memory user.
+// badge_level is not touched here: it is recomputed wherever points change
+// (UpdateUserPoints, CompleteMatchingPlans), which is the only time it can move.
 func (r *CheckInRepository) UpdateStreakFields(ctx context.Context, u *domain.User) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE users SET
@@ -193,12 +197,6 @@ func (r *CheckInRepository) UpdateStreakFields(ctx context.Context, u *domain.Us
 		  streak_week_checkins = $4,
 		  streak_week_start    = $5,
 		  streak_last_checkin  = $6,
-		  badge_level = CASE
-		    WHEN points_total >= 5000 THEN 'Embajador de la Ciudad'
-		    WHEN points_total >= 1000 THEN 'Referente del Barrio'
-		    WHEN points_total >= 300  THEN 'Local Conocido'
-		    ELSE 'Explorador Nuevo'
-		  END,
 		  updated_at = NOW()
 		WHERE user_id = $1
 	`,
@@ -214,7 +212,7 @@ func (r *CheckInRepository) UpdateStreakFields(ctx context.Context, u *domain.Us
 
 // GetEventFeed returns check-ins for a specific place within the last 4 hours, newest first.
 // Cursor-based: pass before != nil to get events older than that timestamp.
-func (r *CheckInRepository) GetEventFeed(ctx context.Context, placeID uuid.UUID, limit int, before *time.Time) ([]domain.CheckInEvent, error) {
+func (r *CheckInRepository) GetEventFeed(ctx context.Context, placeID, requesterID uuid.UUID, limit int, before *time.Time) ([]domain.CheckInEvent, error) {
 	query := `
 		SELECT
 			ci.checkin_id,
@@ -225,17 +223,22 @@ func (r *CheckInRepository) GetEventFeed(ctx context.Context, placeID uuid.UUID,
 			          AND ci.photo_is_permanent = false
 			     THEN NULL ELSE ci.photo_url END AS photo_url,
 			ci.photo_is_permanent,
-			ci.points_awarded
+			EXISTS (
+				SELECT 1 FROM friendships f2
+				WHERE ((f2.user_id_a = $2 AND f2.user_id_b = ci.user_id)
+				    OR (f2.user_id_b = $2 AND f2.user_id_a = ci.user_id))
+				  AND f2.status = 'accepted'
+			) AS is_friend
 		FROM check_ins ci
 		INNER JOIN users u ON u.user_id = ci.user_id
 		INNER JOIN places p ON p.place_id = ci.place_id
 		WHERE ci.place_id = $1
 		  AND ci.checked_in_at > NOW() - INTERVAL '4 hours'
 	`
-	args := []interface{}{placeID}
+	args := []interface{}{placeID, requesterID}
 
 	if before != nil {
-		query += ` AND ci.checked_in_at < $2`
+		query += ` AND ci.checked_in_at < $3`
 		args = append(args, *before)
 	}
 
@@ -257,7 +260,7 @@ func (r *CheckInRepository) GetEventFeed(ctx context.Context, placeID uuid.UUID,
 			&e.User.UserID, &e.User.Username, &e.User.BadgeLevel,
 			&e.Place.PlaceID, &e.Place.Name, &e.Place.Category,
 			&e.PhotoURL, &e.PhotoIsPermanent,
-			&e.PointsAwarded,
+			&e.User.IsFriend,
 		); err != nil {
 			return nil, err
 		}

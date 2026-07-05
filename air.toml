@@ -5,9 +5,9 @@ tmp_dir = "tmp"
 
 [build]
   # Comando de build
-  cmd = "go build -buildvcs=false -o ./tmp/nomad-api ./cmd/server"
+  cmd = "go build -buildvcs=false -o ./tmp/candela-api ./cmd/server"
   # Binario resultante
-  bin = "./tmp/nomad-api"
+  bin = "./tmp/candela-api"
   # Argumentos al ejecutar
   args_bin = []
   # Qué archivos observar

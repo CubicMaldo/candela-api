@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tuusuario/nomad-api/internal/domain"
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 var (
