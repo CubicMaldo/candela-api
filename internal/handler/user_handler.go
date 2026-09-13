@@ -43,6 +43,19 @@ func (h *UserHandler) UpdatePrivacy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"privacy_mode": req.PrivacyMode})
 }
 
+// GET /api/users?q= — username prefix search for the friends screen.
+func (h *UserHandler) Search(c *gin.Context) {
+	requesterID := c.MustGet("userID").(uuid.UUID)
+
+	results, err := h.userService.Search(c.Request.Context(), requesterID, c.Query("q"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"users": results, "total": len(results)})
+}
+
 // GET /api/users/:username
 func (h *UserHandler) GetProfile(c *gin.Context) {
 	requesterID := c.MustGet("userID").(uuid.UUID)

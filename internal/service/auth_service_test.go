@@ -39,10 +39,51 @@ func (f *fakeUserRepo) FindByEmail(_ context.Context, email string) (*domain.Use
 	return nil, repo.ErrUserNotFound
 }
 
+func (f *fakeUserRepo) FindByID(_ context.Context, userID uuid.UUID) (*domain.User, error) {
+	for _, u := range f.byEmail {
+		if u.UserID == userID {
+			return u, nil
+		}
+	}
+	return nil, repo.ErrUserNotFound
+}
+
+// fakeRefreshRepo is an in-memory stand-in for the refresh token table.
+type fakeRefreshRepo struct {
+	// active maps a live token to its owner; rotation removes the old entry so
+	// a replayed token fails exactly as it would against the real table.
+	active map[string]uuid.UUID
+}
+
+func newFakeRefreshRepo() *fakeRefreshRepo {
+	return &fakeRefreshRepo{active: map[string]uuid.UUID{}}
+}
+
+func (f *fakeRefreshRepo) Create(_ context.Context, userID uuid.UUID, token string, _ time.Time) error {
+	f.active[token] = userID
+	return nil
+}
+
+func (f *fakeRefreshRepo) Rotate(_ context.Context, oldToken, newToken string, _ time.Time) (uuid.UUID, error) {
+	userID, ok := f.active[oldToken]
+	if !ok {
+		return uuid.Nil, repo.ErrRefreshTokenInvalid
+	}
+	delete(f.active, oldToken)
+	f.active[newToken] = userID
+	return userID, nil
+}
+
+func (f *fakeRefreshRepo) Revoke(_ context.Context, token string) error {
+	delete(f.active, token)
+	return nil
+}
+
 func newTestAuthService(users *fakeUserRepo, validEmail string) *AuthService {
 	return &AuthService{
-		userRepo: users,
-		cfg:      config.Config{JWTSecret: "test-secret-at-least-32-characters", GoogleCID: "test-aud"},
+		userRepo:    users,
+		refreshRepo: newFakeRefreshRepo(),
+		cfg:         config.Config{JWTSecret: "test-secret-at-least-32-characters", GoogleCID: "test-aud"},
 		googleValidator: func(_ context.Context, idToken, _ string) (string, error) {
 			if idToken == "valid-token" {
 				return validEmail, nil
@@ -165,3 +206,125 @@ func TestLoginGoogleOnlyAccountRejected(t *testing.T) {
 		t.Fatalf("expected ErrGoogleOnlyAccount, got %v", err)
 	}
 }
+
+func TestRefreshSuccess(t *testing.T) {
+	existing := &domain.User{
+		UserID:        uuid.New(),
+		Email:         "ana@example.com",
+		Username:      "ana",
+		AccountStatus: "ACTIVE",
+	}
+	svc := newTestAuthService(&fakeUserRepo{byEmail: map[string]*domain.User{existing.Email: existing}}, existing.Email)
+
+	loginResp, err := svc.GoogleLogin(context.Background(), domain.GoogleAuthRequest{IDToken: "valid-token"})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	if loginResp.RefreshToken == "" {
+		t.Fatal("expected non-empty refresh token from initial session")
+	}
+
+	refreshResp, err := svc.Refresh(context.Background(), loginResp.RefreshToken)
+	if err != nil {
+		t.Fatalf("expected successful refresh, got error: %v", err)
+	}
+
+	if refreshResp.Token == "" {
+		t.Error("expected valid access token after refresh")
+	}
+	if refreshResp.RefreshToken == "" {
+		t.Error("expected new refresh token after refresh")
+	}
+	if refreshResp.RefreshToken == loginResp.RefreshToken {
+		t.Error("refresh token must be rotated to a new value")
+	}
+	if refreshResp.ExpiresIn != int(accessTokenTTL.Seconds()) {
+		t.Errorf("expected expiresIn %d, got %d", int(accessTokenTTL.Seconds()), refreshResp.ExpiresIn)
+	}
+}
+
+func TestRefreshReplayRejected(t *testing.T) {
+	existing := &domain.User{
+		UserID:        uuid.New(),
+		Email:         "ana@example.com",
+		Username:      "ana",
+		AccountStatus: "ACTIVE",
+	}
+	svc := newTestAuthService(&fakeUserRepo{byEmail: map[string]*domain.User{existing.Email: existing}}, existing.Email)
+
+	loginResp, err := svc.GoogleLogin(context.Background(), domain.GoogleAuthRequest{IDToken: "valid-token"})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	// First refresh rotates the token
+	_, err = svc.Refresh(context.Background(), loginResp.RefreshToken)
+	if err != nil {
+		t.Fatalf("first refresh failed: %v", err)
+	}
+
+	// Replay attack: attempt to use the consumed token again
+	_, err = svc.Refresh(context.Background(), loginResp.RefreshToken)
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected on replay, got: %v", err)
+	}
+}
+
+func TestRefreshInactiveAccount(t *testing.T) {
+	existing := &domain.User{
+		UserID:        uuid.New(),
+		Email:         "ana@example.com",
+		Username:      "ana",
+		AccountStatus: "ACTIVE",
+	}
+	userRepo := &fakeUserRepo{byEmail: map[string]*domain.User{existing.Email: existing}}
+	svc := newTestAuthService(userRepo, existing.Email)
+
+	loginResp, err := svc.GoogleLogin(context.Background(), domain.GoogleAuthRequest{IDToken: "valid-token"})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	// Account gets suspended or deleted
+	existing.AccountStatus = "SUSPENDED"
+
+	_, err = svc.Refresh(context.Background(), loginResp.RefreshToken)
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected for suspended user, got: %v", err)
+	}
+}
+
+func TestLogoutRevokesToken(t *testing.T) {
+	existing := &domain.User{
+		UserID:        uuid.New(),
+		Email:         "ana@example.com",
+		Username:      "ana",
+		AccountStatus: "ACTIVE",
+	}
+	svc := newTestAuthService(&fakeUserRepo{byEmail: map[string]*domain.User{existing.Email: existing}}, existing.Email)
+
+	loginResp, err := svc.GoogleLogin(context.Background(), domain.GoogleAuthRequest{IDToken: "valid-token"})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+
+	// Logout should revoke the refresh token
+	if err := svc.Logout(context.Background(), loginResp.RefreshToken); err != nil {
+		t.Fatalf("logout failed: %v", err)
+	}
+
+	// Trying to refresh after logout must fail
+	_, err = svc.Refresh(context.Background(), loginResp.RefreshToken)
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected after logout, got: %v", err)
+	}
+
+	// Logout with empty or already revoked token must be idempotent
+	if err := svc.Logout(context.Background(), ""); err != nil {
+		t.Errorf("expected logout with empty string to succeed, got: %v", err)
+	}
+	if err := svc.Logout(context.Background(), loginResp.RefreshToken); err != nil {
+		t.Errorf("expected idempotent logout to succeed, got: %v", err)
+	}
+}
+

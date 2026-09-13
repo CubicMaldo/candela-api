@@ -6,15 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type Business struct {
-	BusinessID   uuid.UUID `json:"business_id" db:"business_id"`
-	LegalName    string    `json:"legal_name" db:"legal_name"`
-	ContactEmail string    `json:"contact_email" db:"contact_email"`
-	Plan         string    `json:"plan" db:"plan"`
-	IsVerified   bool      `json:"is_verified" db:"is_verified"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-}
-
 type Place struct {
 	PlaceID          uuid.UUID  `json:"place_id" db:"place_id"`
 	Name             string     `json:"name" db:"name"`
@@ -26,9 +17,13 @@ type Place struct {
 	GeofenceMeters   int        `json:"geofence_meters" db:"geofence_meters"`
 	BusinessID       *uuid.UUID `json:"business_id" db:"business_id"`
 	IsVerified       bool       `json:"is_verified" db:"is_verified"`
-	IsActive         bool       `json:"is_active" db:"is_active"`
-	Distance         *float64   `json:"distance,omitempty"` // Para búsquedas por cercanía
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	// IsActive in API responses means "en candela ahora" (recent check-in
+	// activity). The places.is_active DB column is an admin enable/disable
+	// flag used only in WHERE clauses — it is never exposed as-is by nearby.
+	IsActive            bool      `json:"is_active" db:"is_active"`
+	ActiveCheckinsCount int       `json:"active_checkins_count"`
+	Distance            *float64  `json:"distance,omitempty"` // Para búsquedas por cercanía
+	CreatedAt           time.Time `json:"created_at" db:"created_at"`
 }
 
 // PlaceDetail is the response for GET /api/places/:place_id.

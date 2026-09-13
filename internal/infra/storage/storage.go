@@ -20,7 +20,12 @@ type ObjectStorage interface {
 
 type minioStorage struct {
 	client *minio.Client
-	bucket string
+	// presignClient signs URLs against the PUBLIC endpoint (the host the app's
+	// devices can reach, e.g. 10.0.2.2:9000 for the Android emulator). SigV4
+	// signs the Host header, so the host must be baked in at signing time —
+	// it cannot be rewritten afterwards without invalidating the signature.
+	presignClient *minio.Client
+	bucket        string
 }
 
 // stripScheme removes http:// or https:// prefix; minio.New expects host:port only.
@@ -30,19 +35,37 @@ func stripScheme(endpoint string) string {
 	return endpoint
 }
 
-func NewMinIO(endpoint, accessKey, secretKey, bucket string, useSSL bool) (ObjectStorage, error) {
+// NewMinIO creates the storage backend. `endpoint` is the internal address the
+// API uses (bucket ops); `publicEndpoint` is the address embedded in presigned
+// URLs handed to clients. Pass them equal when there is no split network.
+func NewMinIO(endpoint, publicEndpoint, accessKey, secretKey, bucket string, useSSL bool) (ObjectStorage, error) {
+	creds := credentials.NewStaticV4(accessKey, secretKey, "")
 	client, err := minio.New(stripScheme(endpoint), &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+		Creds:  creds,
 		Secure: useSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("storage: failed to create minio client: %w", err)
 	}
-	return &minioStorage{client: client, bucket: bucket}, nil
+	if publicEndpoint == "" {
+		publicEndpoint = endpoint
+	}
+	// Region is pinned so minio-go never issues a GetBucketLocation call —
+	// the public endpoint may not be reachable from inside the API's network
+	// (e.g. 10.0.2.2 only resolves from the Android emulator).
+	presignClient, err := minio.New(stripScheme(publicEndpoint), &minio.Options{
+		Creds:  creds,
+		Secure: strings.HasPrefix(publicEndpoint, "https://"),
+		Region: "us-east-1",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: failed to create presign client: %w", err)
+	}
+	return &minioStorage{client: client, presignClient: presignClient, bucket: bucket}, nil
 }
 
 func (s *minioStorage) PresignedPutURL(ctx context.Context, key string, expires time.Duration) (string, error) {
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expires)
+	u, err := s.presignClient.PresignedPutObject(ctx, s.bucket, key, expires)
 	if err != nil {
 		return "", fmt.Errorf("storage: presign put %s: %w", key, err)
 	}
@@ -50,7 +73,7 @@ func (s *minioStorage) PresignedPutURL(ctx context.Context, key string, expires 
 }
 
 func (s *minioStorage) PresignedGetURL(ctx context.Context, key string, expires time.Duration) (string, error) {
-	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expires, nil)
+	u, err := s.presignClient.PresignedGetObject(ctx, s.bucket, key, expires, nil)
 	if err != nil {
 		return "", fmt.Errorf("storage: presign get %s: %w", key, err)
 	}

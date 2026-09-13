@@ -32,9 +32,9 @@ func (s *ProfileService) GetMyProfile(ctx context.Context, userID uuid.UUID) (*d
 
 // GetFeed returns the three-layer check-in feed (friends, followed places, city
 // activity), newest-first within each layer. Returns the event slice and the
-// cursor for the next page (nil if no more results).
-func (s *ProfileService) GetFeed(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]domain.CheckInEvent, *time.Time, error) {
-	events, err := s.feedRepo.GetFeedCheckIns(ctx, userID, limit, before)
+// cursor for the next page (nil when this page is the last one).
+func (s *ProfileService) GetFeed(ctx context.Context, userID uuid.UUID, limit int, cursor *domain.FeedCursor) ([]domain.CheckInEvent, *domain.FeedCursor, error) {
+	events, err := s.feedRepo.GetFeedCheckIns(ctx, userID, limit, cursor)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,13 +42,17 @@ func (s *ProfileService) GetFeed(ctx context.Context, userID uuid.UUID, limit in
 		events = []domain.CheckInEvent{}
 	}
 
-	var cursor *time.Time
-	if len(events) >= limit && len(events) > 0 {
-		t := events[len(events)-1].Timestamp
-		cursor = &t
+	var next *domain.FeedCursor
+	if len(events) >= limit {
+		last := events[len(events)-1]
+		next = &domain.FeedCursor{
+			Layer:       last.PriorityLayer,
+			CheckedInAt: last.Timestamp,
+			EventID:     last.EventID,
+		}
 	}
 
-	return events, cursor, nil
+	return events, next, nil
 }
 
 func (s *ProfileService) GetMyCheckIns(ctx context.Context, userID uuid.UUID, limit int, before *time.Time) ([]domain.MyCheckIn, *time.Time, error) {

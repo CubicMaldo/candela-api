@@ -61,6 +61,42 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// POST /api/auth/refresh — exchanges a refresh token for a new session.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	var req domain.RefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token is required"})
+		return
+	}
+
+	resp, err := h.authService.Refresh(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		if err == service.ErrRefreshTokenRejected {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// POST /api/auth/logout — revokes one refresh token (this device only).
+// Always succeeds: a client logging out must never be left holding a session
+// it believes is gone.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	var req domain.RefreshRequest
+	_ = c.ShouldBindJSON(&req)
+
+	if err := h.authService.Logout(c.Request.Context(), req.RefreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	var req domain.GoogleAuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

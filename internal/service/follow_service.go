@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/candela-api/internal/domain"
 	"github.com/tuusuario/candela-api/internal/repo"
 )
 
@@ -66,22 +65,4 @@ func (s *FollowService) IsFollowing(ctx context.Context, followerID, placeID uui
 // GetFollowerCount returns the number of users following placeID.
 func (s *FollowService) GetFollowerCount(ctx context.Context, placeID uuid.UUID) (int, error) {
 	return s.followRepo.GetFollowerCount(ctx, placeID)
-}
-
-// GetFollowedPlaces returns the full place details for every place followerID follows.
-func (s *FollowService) GetFollowedPlaces(ctx context.Context, followerID uuid.UUID) ([]domain.Place, error) {
-	placeIDs, err := s.followRepo.GetFollowedPlaceIDs(ctx, followerID)
-	if err != nil {
-		return nil, err
-	}
-
-	places := make([]domain.Place, 0, len(placeIDs))
-	for _, id := range placeIDs {
-		place, err := s.placeRepo.GetByID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		places = append(places, *place)
-	}
-	return places, nil
 }

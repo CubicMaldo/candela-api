@@ -2,7 +2,7 @@
 # Uso: make <comando>
 
 .PHONY: help up down logs ps build migrate-up migrate-down \
-        migrate-create shell-api shell-db tidy test
+        migrate-create shell-api shell-db tidy test sqlc-generate
 
 # ── Variables ────────────────────────────────────────────
 COMPOSE = docker compose
@@ -19,7 +19,6 @@ up: ## Levanta todos los servicios
 	@echo ""
 	@echo "   Servicios corriendo:"
 	@echo "   API     ->  http://localhost:8080"
-	@echo "   Adminer ->  http://localhost:8081"
 	@echo "   DB      ->  localhost:5432"
 	@echo ""
 
@@ -56,6 +55,9 @@ migrate-create: ## Crea nuevos archivos de migración. Uso: make migrate-create 
 	$(COMPOSE) exec api go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate \
 	  create -ext sql -dir /app/db/migrations -seq $$name
 
+seed: ## Inserta datos de prueba (mock) en la base de datos
+	$(COMPOSE) exec -T postgres psql -U candela_user -d candela_db < db/seed_mockdata.sql
+
 # ── Shells ───────────────────────────────────────────────
 shell-api: ## Abre shell dentro del contenedor API
 	$(COMPOSE) exec api sh
@@ -72,6 +74,9 @@ tidy: ## go mod tidy dentro del contenedor
 
 test: ## Corre tests
 	$(COMPOSE) exec api go test ./...
+
+sqlc-generate: ## Genera código de base de datos usando sqlc
+	$(COMPOSE) exec api go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
 
 # ── Setup inicial ────────────────────────────────────────
 setup: ## Primer uso: copia .env y levanta servicios

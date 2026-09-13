@@ -16,6 +16,8 @@ import (
 	"github.com/tuusuario/candela-api/internal/infra/postgres"
 	redisclient "github.com/tuusuario/candela-api/internal/infra/redis"
 	"github.com/tuusuario/candela-api/internal/infra/storage"
+	"github.com/tuusuario/candela-api/internal/repo"
+	"github.com/tuusuario/candela-api/internal/service"
 	"github.com/tuusuario/candela-api/internal/web"
 	"github.com/tuusuario/candela-api/internal/webdeps"
 )
@@ -58,6 +60,7 @@ func main() {
 
 	store, err := storage.NewMinIO(
 		cfg.StorageEndpoint,
+		cfg.StoragePublicEndpoint,
 		cfg.StorageAccessKey,
 		cfg.StorageSecretKey,
 		cfg.StorageBucket,
@@ -74,6 +77,15 @@ func main() {
 		Redis:   rdb,
 		Storage: store,
 	})
+
+	// Background reclamation of expired photos and refresh tokens.
+	janitorCtx, stopJanitor := context.WithCancel(context.Background())
+	defer stopJanitor()
+	go service.NewJanitor(
+		repo.NewCheckInRepository(pool, cfg.LocalTimezone),
+		repo.NewRefreshTokenRepository(pool),
+		store,
+	).Run(janitorCtx)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Port),

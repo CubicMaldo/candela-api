@@ -20,24 +20,33 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	router := gin.Default()
 	router.GET("/health", healthHandler(deps.Env))
 
+	// Credential endpoints are brute-force targets, so they stay tight.
 	authLimiter := middleware.RateLimiter(deps.Redis, 10, time.Minute)
+
+	// Session maintenance is not a credential guess: refresh carries a token
+	// the client already holds. It also shares the caller's IP with everyone
+	// behind the same NAT — a cafe or campus wifi — so the strict limit would
+	// return 429 to legitimate refreshes and, because a failed refresh ends the
+	// session client-side, log those users out.
+	sessionLimiter := middleware.RateLimiter(deps.Redis, 120, time.Minute)
 
 	// Repositories
 	userRepo := repo.NewUserRepository(deps.DBPool)
 	placeRepo := repo.NewPlaceRepository(deps.DBPool)
-	checkinRepo := repo.NewCheckInRepository(deps.DBPool)
+	checkinRepo := repo.NewCheckInRepository(deps.DBPool, deps.Config.LocalTimezone)
 	rankingRepo := repo.NewRankingRepository(deps.DBPool)
 	friendshipRepo := repo.NewFriendshipRepository(deps.DBPool)
 	planRepo := repo.NewPlanRepository(deps.DBPool)
 	feedRepo := repo.NewFeedRepository(deps.DBPool)
 	followRepo := repo.NewFollowRepository(deps.DBPool)
 	reportRepo := repo.NewReportRepository(deps.DBPool)
+	refreshRepo := repo.NewRefreshTokenRepository(deps.DBPool)
 
 	// Services
-	authService := service.NewAuthService(userRepo, deps.Config)
-	checkinService := service.NewCheckInService(checkinRepo, planRepo, userRepo, deps.Storage, deps.Redis)
+	authService := service.NewAuthService(userRepo, refreshRepo, deps.Config)
+	checkinService := service.NewCheckInService(checkinRepo, planRepo, deps.Storage, deps.Redis)
 	rankingService := service.NewRankingService(rankingRepo, userRepo, deps.Redis)
-	userService := service.NewUserService(userRepo, friendshipRepo, deps.Redis)
+	userService := service.NewUserService(userRepo, friendshipRepo, refreshRepo, deps.Storage, deps.Redis)
 	friendService := service.NewFriendService(friendshipRepo, deps.Redis)
 	planService := service.NewPlanService(planRepo, friendshipRepo, placeRepo)
 	profileService := service.NewProfileService(userRepo, feedRepo, checkinRepo, planRepo)
@@ -66,6 +75,16 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/google", authHandler.GoogleLogin)
 			auth.POST("/google/register", authHandler.GoogleRegister)
+		}
+
+		// Refresh and logout are unauthenticated on purpose: the caller's
+		// access token has usually expired by the time they are needed. The
+		// refresh token itself is the credential.
+		session := api.Group("/auth")
+		session.Use(sessionLimiter)
+		{
+			session.POST("/refresh", authHandler.Refresh)
+			session.POST("/logout", authHandler.Logout)
 		}
 
 		protected := api.Group("")
@@ -107,6 +126,9 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 
 			users := protected.Group("/users")
 			{
+				// Search lives at the collection root (GET /api/users?q=) so it
+				// can't collide with the :username route below.
+				users.GET("", userHandler.Search)
 				users.GET("/:username", userHandler.GetProfile)
 				users.POST("/:user_id/block", userHandler.Block)
 				users.DELETE("/:user_id/block", userHandler.Unblock)

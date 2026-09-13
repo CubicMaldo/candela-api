@@ -7,14 +7,24 @@ import (
 )
 
 type CheckIn struct {
-	CheckInID        uuid.UUID  `json:"checkin_id"        db:"checkin_id"`
-	UserID           uuid.UUID  `json:"user_id"           db:"user_id"`
-	PlaceID          uuid.UUID  `json:"place_id"          db:"place_id"`
-	PhotoURL         *string    `json:"photo_url"         db:"photo_url"`
+	CheckInID uuid.UUID `json:"checkin_id"        db:"checkin_id"`
+	UserID    uuid.UUID `json:"user_id"           db:"user_id"`
+	PlaceID   uuid.UUID `json:"place_id"          db:"place_id"`
+	PhotoURL  *string   `json:"photo_url"         db:"photo_url"`
+	// PhotoKey is the object-storage key behind PhotoURL. Kept so the photo can
+	// be deleted (account deletion, expiry sweep) without parsing it back out
+	// of a signed URL. Never exposed to clients.
+	PhotoKey         *string    `json:"-"                 db:"photo_key"`
 	PhotoExpiresAt   *time.Time `json:"photo_expires_at"  db:"photo_expires_at"`
 	PhotoIsPermanent bool       `json:"photo_is_permanent" db:"photo_is_permanent"`
-	GpsLat           float64    `json:"gps_lat"           db:"gps_lat"`
-	GpsLon           float64    `json:"gps_lon"           db:"gps_lon"`
+	// PhotoExifTS is the capture time the client reported. It is a fraud signal
+	// recorded for review, never a gate — see TimestampValid.
+	PhotoExifTS      *time.Time `json:"-"                 db:"photo_exif_ts"`
+	TimestampValid   bool       `json:"-"                 db:"timestamp_valid"`
+	// Lat/Lon are the coordinates the server validated at Initiate time.
+	// Stored as GEOGRAPHY(POINT, 4326) in the database; the repo converts.
+	Lat              float64    `json:"lat"               db:"lat"`
+	Lon              float64    `json:"lon"               db:"lon"`
 	GpsValid         bool       `json:"gps_valid"         db:"gps_valid"`
 	ValidationPassed bool       `json:"validation_passed" db:"validation_passed"`
 	PointsAwarded    int        `json:"points_awarded"    db:"points_awarded"`
@@ -37,9 +47,12 @@ type CheckInInitiateResponse struct {
 
 // CheckInConfirmRequest is sent after the client finishes uploading the photo.
 type CheckInConfirmRequest struct {
-	CheckInNonce     string    `json:"checkin_nonce"    binding:"required"`
-	PhotoKey         string    `json:"photo_key"        binding:"required"`
-	ExifTimestamp    time.Time `json:"exif_timestamp"   binding:"required"`
+	CheckInNonce string `json:"checkin_nonce"    binding:"required"`
+	PhotoKey     string `json:"photo_key"        binding:"required"`
+	// ExifTimestamp is the capture time as the device reported it. Optional and
+	// advisory: liveness is proven by the 90-second server-side nonce, not by
+	// the client's clock. Recorded as a fraud signal only.
+	ExifTimestamp    time.Time `json:"exif_timestamp"`
 	PhotoIsPermanent bool      `json:"photo_is_permanent"`
 }
 

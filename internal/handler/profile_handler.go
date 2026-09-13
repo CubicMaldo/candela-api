@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/tuusuario/candela-api/internal/domain"
 	"github.com/tuusuario/candela-api/internal/repo"
 	"github.com/tuusuario/candela-api/internal/service"
 )
@@ -38,21 +39,33 @@ func (h *ProfileHandler) GetMe(c *gin.Context) {
 }
 
 // GET /api/feed
+//
+// Pagination uses the opaque `cursor` token returned as `next_cursor`; a bare
+// timestamp cannot express a position in a layered feed (see domain.FeedCursor).
 func (h *ProfileHandler) GetFeed(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
 	limit := parseLimitParam(c.Query("limit"), 20, 50)
-	before := parseBeforeParam(c.Query("before"))
 
-	events, cursor, err := h.profileService.GetFeed(c.Request.Context(), userID, limit, before)
+	var cursor *domain.FeedCursor
+	if raw := c.Query("cursor"); raw != "" {
+		parsed, err := domain.DecodeFeedCursor(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cursor"})
+			return
+		}
+		cursor = &parsed
+	}
+
+	events, next, err := h.profileService.GetFeed(c.Request.Context(), userID, limit, cursor)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	var nextCursor interface{}
-	if cursor != nil {
-		nextCursor = cursor.UTC().Format(time.RFC3339Nano)
+	if next != nil {
+		nextCursor = next.Encode()
 	}
 
 	c.JSON(http.StatusOK, gin.H{

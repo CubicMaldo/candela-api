@@ -52,12 +52,20 @@ func (r *PlaceRepository) GetByID(ctx context.Context, placeID uuid.UUID) (*doma
 // FindNearby usa PostGIS ST_DWithin para encontrar lugares y ordenarlos por distancia
 func (r *PlaceRepository) FindNearby(ctx context.Context, lat, lon float64, radiusInMeters float64, category string) ([]domain.Place, error) {
 	// NOTA: PostGIS ST_MakePoint toma argumentos como (longitud, latitud)
+	// active_checkins_count follows the same "last 4 hours" rule as the place
+	// detail, so is_active means the same thing ("en candela ahora") on every
+	// endpoint. The places.is_active column only gates which rows are listed.
 	query := `
-		SELECT 
+		SELECT
 			place_id, name, description, category, minor_suitability,
 			ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon,
 			geofence_meters, business_id, is_verified, is_active, created_at,
-			ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance
+			ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) as distance,
+			(
+				SELECT COUNT(*) FROM check_ins ci
+				WHERE ci.place_id = places.place_id
+				  AND ci.checked_in_at > NOW() - INTERVAL '4 hours'
+			) AS active_checkins_count
 		FROM places
 		WHERE is_active = true
 		  AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
@@ -85,12 +93,14 @@ func (r *PlaceRepository) FindNearby(ctx context.Context, lat, lon float64, radi
 		err := rows.Scan(
 			&p.PlaceID, &p.Name, &p.Description, &p.Category, &p.MinorSuitability,
 			&p.Lat, &p.Lon, &p.GeofenceMeters, &p.BusinessID, &p.IsVerified, &p.IsActive, &p.CreatedAt,
-			&dist,
+			&dist, &p.ActiveCheckinsCount,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.Distance = &dist
+		// The response's is_active means live activity, not the admin flag.
+		p.IsActive = p.ActiveCheckinsCount > 0
 		places = append(places, p)
 	}
 

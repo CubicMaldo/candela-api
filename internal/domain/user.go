@@ -12,7 +12,6 @@ type User struct {
 	Username           string     `json:"username"          db:"username"`
 	PasswordHash       string     `json:"-"                 db:"password_hash"`
 	BirthDate          time.Time  `json:"birth_date"        db:"birth_date"`
-	Age                int        `json:"age"               db:"age"`
 	IsProtected        bool       `json:"is_protected"      db:"is_protected"`
 	AccountStatus      string     `json:"account_status"    db:"account_status"`
 	PrivacyMode        string     `json:"privacy_mode"      db:"privacy_mode"`
@@ -30,6 +29,15 @@ type User struct {
 	RankingOptIn       bool       `json:"ranking_opt_in"    db:"ranking_opt_in"`
 	CreatedAt          time.Time  `json:"created_at"        db:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"        db:"updated_at"`
+}
+
+// UserSearchEntry is one result of the username prefix search
+// (GET /api/users?q=). Only ever exposes public, non-sensitive fields.
+type UserSearchEntry struct {
+	UserID     uuid.UUID `json:"user_id"`
+	Username   string    `json:"username"`
+	BadgeLevel string    `json:"badge_level"`
+	IsFriend   bool      `json:"is_friend"`
 }
 
 // CalculateAge returns the user's current age in years based on BirthDate.
@@ -62,9 +70,19 @@ type AuthRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// AuthResponse is returned by every flow that establishes a session.
+// Token is the short-lived access JWT; RefreshToken exchanges for a new pair
+// via POST /api/auth/refresh once ExpiresIn seconds have passed.
 type AuthResponse struct {
-	Token string `json:"token"`
-	User  User   `json:"user"`
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	User         User   `json:"user"`
+}
+
+// RefreshRequest is the body of POST /api/auth/refresh and /api/auth/logout.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
 type GoogleAuthRequest struct {

@@ -3,7 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 )
+
+// devJWTSecret is the throwaway signing key used when JWT_SECRET is unset.
+// Load refuses to start with it in production — a predictable secret lets
+// anyone forge a token for any user.
+const devJWTSecret = "insecure-dev-only-secret"
 
 type Config struct {
 	AppEnv      string
@@ -12,12 +18,21 @@ type Config struct {
 	RedisURL    string
 	JWTSecret   string
 	GoogleCID   string
+	// LocalTimezone is the IANA zone that defines a "day" for check-in rules
+	// (first-of-day bonus, one-per-place-per-day). Candela is a nightlife app:
+	// in UTC the day would roll over at 7pm local and reset those rules
+	// mid-evening.
+	LocalTimezone string
 
-	StorageEndpoint  string
-	StorageAccessKey string
-	StorageSecretKey string
-	StorageBucket    string
-	StorageUseSSL    bool
+	StorageEndpoint string
+	// StoragePublicEndpoint is the host embedded in presigned URLs — the one
+	// devices can actually reach (e.g. http://10.0.2.2:9000 for the Android
+	// emulator). Falls back to StorageEndpoint when unset.
+	StoragePublicEndpoint string
+	StorageAccessKey      string
+	StorageSecretKey      string
+	StorageBucket         string
+	StorageUseSSL         bool
 }
 
 func Load() (Config, error) {
@@ -26,14 +41,17 @@ func Load() (Config, error) {
 		Port:        getEnv("PORT", "8080"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		RedisURL:    os.Getenv("REDIS_URL"),
-		JWTSecret:   getEnv("JWT_SECRET", "super-secret-key-1234"),
+		JWTSecret:   getEnv("JWT_SECRET", devJWTSecret),
 		GoogleCID:   os.Getenv("GOOGLE_CLIENT_ID"),
 
-		StorageEndpoint:  os.Getenv("STORAGE_ENDPOINT"),
-		StorageAccessKey: os.Getenv("STORAGE_ACCESS_KEY"),
-		StorageSecretKey: os.Getenv("STORAGE_SECRET_KEY"),
-		StorageBucket:    getEnv("STORAGE_BUCKET", "candela-photos"),
-		StorageUseSSL:    os.Getenv("STORAGE_USE_SSL") == "true",
+		LocalTimezone: getEnv("APP_TIMEZONE", "America/Bogota"),
+
+		StorageEndpoint:       os.Getenv("STORAGE_ENDPOINT"),
+		StoragePublicEndpoint: os.Getenv("STORAGE_PUBLIC_ENDPOINT"),
+		StorageAccessKey:      os.Getenv("STORAGE_ACCESS_KEY"),
+		StorageSecretKey:      os.Getenv("STORAGE_SECRET_KEY"),
+		StorageBucket:         getEnv("STORAGE_BUCKET", "candela-photos"),
+		StorageUseSSL:         os.Getenv("STORAGE_USE_SSL") == "true",
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -44,6 +62,19 @@ func Load() (Config, error) {
 	}
 	if cfg.StorageEndpoint == "" {
 		return Config{}, fmt.Errorf("STORAGE_ENDPOINT is required")
+	}
+
+	if cfg.AppEnv == "production" {
+		if cfg.JWTSecret == devJWTSecret {
+			return Config{}, fmt.Errorf("JWT_SECRET is required in production")
+		}
+		if len(cfg.JWTSecret) < 32 {
+			return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters in production")
+		}
+	}
+
+	if _, err := time.LoadLocation(cfg.LocalTimezone); err != nil {
+		return Config{}, fmt.Errorf("APP_TIMEZONE %q is not a valid IANA timezone: %w", cfg.LocalTimezone, err)
 	}
 
 	return cfg, nil

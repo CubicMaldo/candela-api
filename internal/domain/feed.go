@@ -42,7 +42,7 @@ type MyProfile struct {
 	Email               string     `json:"email"`
 	Username            string     `json:"username"`
 	BirthDate           time.Time  `json:"birth_date"`
-	Age                 int        `json:"age"`
+	Age                 int        `json:"age"` // computed from birth_date by SQL, not a stored column
 	IsProtected         bool       `json:"is_protected"`
 	AccountStatus       string     `json:"account_status"`
 	PrivacyMode         string     `json:"privacy_mode"`

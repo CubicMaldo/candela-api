@@ -42,6 +42,8 @@ func (h *CheckInHandler) Initiate(c *gin.Context) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		case service.ErrAlreadyCheckedIn:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		case service.ErrPlaceRestricted:
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
@@ -72,6 +74,8 @@ func (h *CheckInHandler) Confirm(c *gin.Context) {
 		switch err {
 		case service.ErrInvalidCheckInNonce:
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		case service.ErrAlreadyCheckedIn:
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}

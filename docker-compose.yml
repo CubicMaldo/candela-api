@@ -16,7 +16,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,7 +45,7 @@ services:
   # Console: http://localhost:9001
   # ─────────────────────────────────────────
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio:latest
     container_name: candela_minio
     command: server /data --console-address ":9001"
     restart: unless-stopped
@@ -58,7 +58,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -67,6 +67,7 @@ services:
   # Go API — con hot reload (Air)
   # ─────────────────────────────────────────
   api:
+    image: candela-api:latest
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -81,6 +82,8 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - STORAGE_ENDPOINT=http://minio:9000
+      # Host que los dispositivos pueden alcanzar (emulador Android -> host loopback)
+      - STORAGE_PUBLIC_ENDPOINT=http://10.0.2.2:9000
       - STORAGE_ACCESS_KEY=minioadmin
       - STORAGE_SECRET_KEY=minioadmin
       - STORAGE_BUCKET=candela-photos
@@ -95,20 +98,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-
-  # ─────────────────────────────────────────
-  # Adminer — UI web para explorar la DB
-  # ─────────────────────────────────────────
-  adminer:
-    image: adminer:latest
-    container_name: candela_adminer
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-    depends_on:
-      - postgres
 
 volumes:
   postgres_data:

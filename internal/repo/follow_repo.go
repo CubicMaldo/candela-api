@@ -43,27 +43,6 @@ func (r *FollowRepository) IsFollowing(ctx context.Context, followerID, placeID 
 	return count > 0, err
 }
 
-// GetFollowedPlaceIDs returns the IDs of every place followerID follows.
-func (r *FollowRepository) GetFollowedPlaceIDs(ctx context.Context, followerID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT place_id FROM follows WHERE follower_id = $1
-	`, followerID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []uuid.UUID
-	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
 // GetFollowerCount returns the number of users following placeID.
 func (r *FollowRepository) GetFollowerCount(ctx context.Context, placeID uuid.UUID) (int, error) {
 	var count int
