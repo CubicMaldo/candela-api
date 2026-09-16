@@ -1,4 +1,4 @@
-package service
+package privacy_test
 
 import (
 	"context"
@@ -13,7 +13,8 @@ import (
 
 	"github.com/tuusuario/candela-api/internal/domain"
 	"github.com/tuusuario/candela-api/internal/repo"
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/service"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 type privacyTestUser struct {
@@ -61,21 +62,6 @@ func insertPrivacyTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	return u.ID
 }
 
-func makeFriends(t *testing.T, ctx context.Context, pool *pgxpool.Pool, u1, u2 uuid.UUID) {
-	idA, idB := u1, u2
-	if idA.String() > idB.String() {
-		idA, idB = idB, idA
-	}
-	_, err := pool.Exec(ctx, `
-		INSERT INTO friendships (user_id_a, user_id_b, requester_id, status, created_at)
-		VALUES ($1, $2, $3, 'accepted', NOW())
-		ON CONFLICT (user_id_a, user_id_b) DO UPDATE SET status = 'accepted'
-	`, idA, idB, u1)
-	if err != nil {
-		t.Fatalf("failed to make friends: %v", err)
-	}
-}
-
 // 1. Cuentas protegidas (menores): Intentar cambiar a PUBLIC siendo menor/protegido falla con ErrProtectedCannotBePublic.
 func TestUpdatePrivacy_ProtectedMinorCannotBePublic(t *testing.T) {
 	pool := testhelper.GetTestPool(t)
@@ -89,7 +75,7 @@ func TestUpdatePrivacy_ProtectedMinorCannotBePublic(t *testing.T) {
 	ur := repo.NewUserRepository(pool)
 	fr := repo.NewFriendshipRepository(pool)
 	rr := repo.NewRefreshTokenRepository(pool)
-	userSvc := NewUserService(ur, fr, rr, mockStore, rdb)
+	userSvc := service.NewUserService(ur, fr, rr, mockStore, rdb)
 
 	minorID := insertPrivacyTestUser(t, ctx, pool, privacyTestUser{
 		IsProtected: true,
@@ -98,7 +84,7 @@ func TestUpdatePrivacy_ProtectedMinorCannotBePublic(t *testing.T) {
 
 	// Attempting to set PUBLIC while isProtected == true must fail
 	err := userSvc.UpdatePrivacy(ctx, minorID, true, "PUBLIC")
-	if !errors.Is(err, ErrProtectedCannotBePublic) {
+	if !errors.Is(err, service.ErrProtectedCannotBePublic) {
 		t.Fatalf("expected ErrProtectedCannotBePublic, got: %v", err)
 	}
 
@@ -122,7 +108,7 @@ func TestGetProfile_PrivacyMatrix(t *testing.T) {
 	ur := repo.NewUserRepository(pool)
 	fr := repo.NewFriendshipRepository(pool)
 	rr := repo.NewRefreshTokenRepository(pool)
-	userSvc := NewUserService(ur, fr, rr, mockStore, rdb)
+	userSvc := service.NewUserService(ur, fr, rr, mockStore, rdb)
 
 	strangerID := insertPrivacyTestUser(t, ctx, pool, privacyTestUser{PrivacyMode: "PUBLIC"})
 	friendID := insertPrivacyTestUser(t, ctx, pool, privacyTestUser{PrivacyMode: "PUBLIC"})
@@ -132,7 +118,7 @@ func TestGetProfile_PrivacyMatrix(t *testing.T) {
 		Username:    "target_priv",
 		PrivacyMode: "PRIVATE",
 	})
-	makeFriends(t, ctx, pool, targetPrivateID, friendID)
+	testhelper.MakeFriends(t, ctx, pool, targetPrivateID, friendID)
 
 	// Self: gets FullUserProfile
 	resSelf, err := userSvc.GetProfile(ctx, targetPrivateID, "target_priv")
@@ -154,7 +140,7 @@ func TestGetProfile_PrivacyMatrix(t *testing.T) {
 
 	// Stranger: rejected with ErrProfilePrivate
 	_, err = userSvc.GetProfile(ctx, strangerID, "target_priv")
-	if !errors.Is(err, ErrProfilePrivate) {
+	if !errors.Is(err, service.ErrProfilePrivate) {
 		t.Fatalf("expected ErrProfilePrivate for stranger on PRIVATE profile, got: %v", err)
 	}
 
@@ -163,7 +149,7 @@ func TestGetProfile_PrivacyMatrix(t *testing.T) {
 		Username:    "target_frnd",
 		PrivacyMode: "FRIENDS",
 	})
-	makeFriends(t, ctx, pool, targetFriendsID, friendID)
+	testhelper.MakeFriends(t, ctx, pool, targetFriendsID, friendID)
 
 	// Self: FullUserProfile
 	resFSelf, err := userSvc.GetProfile(ctx, targetFriendsID, "target_frnd")
@@ -207,7 +193,7 @@ func TestGetProfile_PointsHiddenWhenOptOut(t *testing.T) {
 	ur := repo.NewUserRepository(pool)
 	fr := repo.NewFriendshipRepository(pool)
 	rr := repo.NewRefreshTokenRepository(pool)
-	userSvc := NewUserService(ur, fr, rr, mockStore, rdb)
+	userSvc := service.NewUserService(ur, fr, rr, mockStore, rdb)
 
 	// User with ranking_opt_in = false
 	optOutID := insertPrivacyTestUser(t, ctx, pool, privacyTestUser{
@@ -275,8 +261,8 @@ func TestBlockIsolation(t *testing.T) {
 	feedRepo := repo.NewFeedRepository(pool)
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 
-	userSvc := NewUserService(ur, fr, rr, mockStore, rdb)
-	planSvc := NewPlanService(repo.NewPlanRepository(pool), fr, plr)
+	userSvc := service.NewUserService(ur, fr, rr, mockStore, rdb)
+	planSvc := service.NewPlanService(repo.NewPlanRepository(pool), fr, plr)
 
 	userA := insertPrivacyTestUser(t, ctx, pool, privacyTestUser{
 		Username:    "block_alpha",
@@ -295,11 +281,11 @@ func TestBlockIsolation(t *testing.T) {
 
 	// 4.1 Profiles: Neither A nor B can view each other's profile -> ErrUserNotVisible
 	_, err = userSvc.GetProfile(ctx, userA, "block_bravo")
-	if !errors.Is(err, ErrUserNotVisible) {
+	if !errors.Is(err, service.ErrUserNotVisible) {
 		t.Fatalf("expected ErrUserNotVisible for blocker viewing blocked, got: %v", err)
 	}
 	_, err = userSvc.GetProfile(ctx, userB, "block_alpha")
-	if !errors.Is(err, ErrUserNotVisible) {
+	if !errors.Is(err, service.ErrUserNotVisible) {
 		t.Fatalf("expected ErrUserNotVisible for blocked viewing blocker, got: %v", err)
 	}
 
@@ -331,7 +317,7 @@ func TestBlockIsolation(t *testing.T) {
 		TargetUserID:  &userB,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrUserNotVisible) {
+	if !errors.Is(err, service.ErrUserNotVisible) {
 		t.Fatalf("expected ErrUserNotVisible when user A creates plan with blocked user B, got: %v", err)
 	}
 
@@ -340,7 +326,7 @@ func TestBlockIsolation(t *testing.T) {
 		TargetUserID:  &userA,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrUserNotVisible) {
+	if !errors.Is(err, service.ErrUserNotVisible) {
 		t.Fatalf("expected ErrUserNotVisible when user B creates plan with blocker user A, got: %v", err)
 	}
 

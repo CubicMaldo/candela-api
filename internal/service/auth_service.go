@@ -40,8 +40,10 @@ func (e *GoogleNeedsRegistrationError) Error() string {
 }
 
 // googleTokenValidator verifies a Google ID token against the audience and
+// GoogleTokenValidator verifies a Google ID token against the audience and
 // returns the verified email. Injectable so tests can fake Google.
 type googleTokenValidator func(ctx context.Context, idToken, audience string) (string, error)
+type GoogleTokenValidator func(ctx context.Context, idToken, audience string) (string, error)
 
 func defaultGoogleValidator(ctx context.Context, idToken, audience string) (string, error) {
 	payload, err := idtoken.Validate(ctx, idToken, audience)
@@ -64,8 +66,10 @@ const (
 )
 
 // authUserRepo is the slice of UserRepository the auth service needs.
+// AuthUserRepo is the slice of UserRepository the auth service needs.
 // *repo.UserRepository satisfies it; tests can substitute a fake.
 type authUserRepo interface {
+type AuthUserRepo interface {
 	Create(ctx context.Context, u *domain.User) error
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
@@ -73,6 +77,8 @@ type authUserRepo interface {
 
 // authRefreshRepo is the slice of RefreshTokenRepository the auth service needs.
 type authRefreshRepo interface {
+// AuthRefreshRepo is the slice of RefreshTokenRepository the auth service needs.
+type AuthRefreshRepo interface {
 	Create(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error
 	Rotate(ctx context.Context, oldToken, newToken string, newExpiry time.Time) (uuid.UUID, error)
 	Revoke(ctx context.Context, token string) error
@@ -81,16 +87,24 @@ type authRefreshRepo interface {
 type AuthService struct {
 	userRepo        authUserRepo
 	refreshRepo     authRefreshRepo
+	userRepo        AuthUserRepo
+	refreshRepo     AuthRefreshRepo
 	cfg             config.Config
 	googleValidator googleTokenValidator
+	googleValidator GoogleTokenValidator
 }
 
 func NewAuthService(ur *repo.UserRepository, rr *repo.RefreshTokenRepository, cfg config.Config) *AuthService {
+	return NewAuthServiceWithCustom(ur, rr, cfg, defaultGoogleValidator)
+}
+
+func NewAuthServiceWithCustom(ur AuthUserRepo, rr AuthRefreshRepo, cfg config.Config, gv GoogleTokenValidator) *AuthService {
 	return &AuthService{
 		userRepo:        ur,
 		refreshRepo:     rr,
 		cfg:             cfg,
 		googleValidator: defaultGoogleValidator,
+		googleValidator: gv,
 	}
 }
 

@@ -1,4 +1,4 @@
-package service
+package janitor_test
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tuusuario/candela-api/internal/repo"
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/service"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 // 5.1 Regla de foto permanente (SetPermanent)
@@ -28,10 +29,10 @@ func TestCheckIn_SetPermanent(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	checkInSvc := NewCheckInService(cr, pr, mockStore, rdb)
+	checkInSvc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userOwner := createTestUser(t, ctx, pool, false)
-	userOther := createTestUser(t, ctx, pool, false)
+	userOwner := testhelper.CreateTestUser(t, ctx, pool, false)
+	userOther := testhelper.CreateTestUser(t, ctx, pool, false)
 
 	// Create an isolated test place with no other check-ins
 	testPlaceID := uuid.New()
@@ -72,13 +73,13 @@ func TestCheckIn_SetPermanent(t *testing.T) {
 
 	// 1.1 Modifying another user's check-in fails with ErrNotCheckInOwner
 	_, err = checkInSvc.SetPermanent(ctx, userOther, oldCheckInID, true)
-	if !errors.Is(err, ErrNotCheckInOwner) {
+	if !errors.Is(err, service.ErrNotCheckInOwner) {
 		t.Fatalf("expected ErrNotCheckInOwner for non-owner, got: %v", err)
 	}
 
 	// 1.2 Modifying check-in when event is closed (0 check-ins in last 4 hours) fails with ErrEventClosed
 	_, err = checkInSvc.SetPermanent(ctx, userOwner, oldCheckInID, true)
-	if !errors.Is(err, ErrEventClosed) {
+	if !errors.Is(err, service.ErrEventClosed) {
 		t.Fatalf("expected ErrEventClosed when event is closed, got: %v", err)
 	}
 
@@ -136,11 +137,11 @@ func TestJanitor_SweepExpiredPhotos(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	rr := repo.NewRefreshTokenRepository(pool)
-	janitor := NewJanitor(cr, rr, mockStore)
+	janitor := service.NewJanitor(cr, rr, mockStore)
 
-	userExpired := createTestUser(t, ctx, pool, false)
-	userPerm := createTestUser(t, ctx, pool, false)
-	userFuture := createTestUser(t, ctx, pool, false)
+	userExpired := testhelper.CreateTestUser(t, ctx, pool, false)
+	userPerm := testhelper.CreateTestUser(t, ctx, pool, false)
+	userFuture := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	// Photo 1: Expired Ephemeral (SHOULD BE CLEANED)
@@ -210,7 +211,7 @@ func TestJanitor_SweepExpiredPhotos(t *testing.T) {
 	}
 
 	// Run Janitor sweep
-	janitor.sweepExpiredPhotos(ctx)
+	janitor.SweepExpiredPhotos(ctx)
 
 	// 1. Verify expired ephemeral photo was deleted from storage
 	if !mockStore.WasDeleted(keyExpired) {

@@ -1,8 +1,10 @@
-package domain
+package domain_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 func date(year, month, day int) time.Time {
@@ -50,7 +52,7 @@ func TestCalculateAge(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := &User{BirthDate: tt.birthDate}
+			u := &domain.User{BirthDate: tt.birthDate}
 			got := u.CalculateAge(tt.now)
 			if got != tt.want {
 				t.Errorf("CalculateAge() = %d, want %d", got, tt.want)
@@ -102,7 +104,7 @@ func TestIsProtectedMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := &User{BirthDate: tt.birthDate, IsProtected: tt.isProtected}
+			u := &domain.User{BirthDate: tt.birthDate, IsProtected: tt.isProtected}
 			got := u.IsProtectedMode(now)
 			if got != tt.want {
 				t.Errorf("IsProtectedMode() = %v, want %v", got, tt.want)

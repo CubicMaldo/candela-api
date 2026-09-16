@@ -1,4 +1,4 @@
-package service
+package checkin_test
 
 import (
 	"context"
@@ -10,42 +10,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tuusuario/candela-api/internal/domain"
 	"github.com/tuusuario/candela-api/internal/repo"
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/service"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
-
-func createTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, isProtected bool) uuid.UUID {
-	userID := uuid.New()
-	email := fmt.Sprintf("test-%s@example.com", userID.String()[:8])
-	username := fmt.Sprintf("user_%s", userID.String()[:8])
-
-	// For minor calculation: if isProtected is true, birthDate 16 years ago
-	birthDate := "2000-01-01"
-	if isProtected {
-		birthDate = time.Now().AddDate(-16, 0, 0).Format("2006-01-02")
-	}
-
-	_, err := pool.Exec(ctx, `
-		INSERT INTO users (
-			user_id, email, username, password_hash, birth_date,
-			is_protected, account_status, privacy_mode, ranking_opt_in
-		) VALUES ($1, $2, $3, 'hash123', $4, $5, 'ACTIVE', 'PUBLIC', true)
-	`, userID, email, username, birthDate, isProtected)
-	if err != nil {
-		t.Fatalf("failed to create test user: %v", err)
-	}
-
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM point_transactions WHERE user_id = $1`, userID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM check_ins WHERE user_id = $1`, userID)
-		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE user_id = $1`, userID)
-	})
-
-	return userID
-}
 
 // 1. Nonce single use: Confirm consumes the Redis nonce; a second call fails with ErrInvalidCheckInNonce.
 func TestCheckIn_Nonce_SingleUse(t *testing.T) {
@@ -59,9 +29,9 @@ func TestCheckIn_Nonce_SingleUse(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001") // Cafetería La Plaza: lon -74.8080, lat 11.0110
 
 	initResp, err := svc.Initiate(ctx, userID, placeID, false, domain.CheckInInitiateRequest{
@@ -88,7 +58,7 @@ func TestCheckIn_Nonce_SingleUse(t *testing.T) {
 
 	// Second Confirm with the SAME nonce must fail with ErrInvalidCheckInNonce
 	_, err = svc.Confirm(ctx, userID, placeID, confirmReq)
-	if !errors.Is(err, ErrInvalidCheckInNonce) {
+	if !errors.Is(err, service.ErrInvalidCheckInNonce) {
 		t.Fatalf("expected ErrInvalidCheckInNonce on second Confirm, got: %v", err)
 	}
 }
@@ -105,17 +75,17 @@ func TestCheckIn_Nonce_Expired(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	// Store an expired session directly in Redis or delete it to simulate TTL expiration
 	expiredNonce := uuid.New().String()
 	expiredPhotoKey := fmt.Sprintf("checkins/%s/expired.jpg", userID.String())
-	nonceKey := checkInNonceKey(expiredNonce)
+	nonceKey := service.CheckInNonceKey(expiredNonce)
 
-	session := checkInSession{
+	session := service.CheckInSession{
 		UserID:   userID,
 		PlaceID:  placeID,
 		PhotoKey: expiredPhotoKey,
@@ -132,7 +102,7 @@ func TestCheckIn_Nonce_Expired(t *testing.T) {
 		CheckInNonce: expiredNonce,
 		PhotoKey:     expiredPhotoKey,
 	})
-	if !errors.Is(err, ErrInvalidCheckInNonce) {
+	if !errors.Is(err, service.ErrInvalidCheckInNonce) {
 		t.Fatalf("expected ErrInvalidCheckInNonce for expired nonce, got: %v", err)
 	}
 }
@@ -149,10 +119,10 @@ func TestCheckIn_Nonce_UserMismatch_And_PlaceMismatch(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userA := createTestUser(t, ctx, pool, false)
-	userB := createTestUser(t, ctx, pool, false)
+	userA := testhelper.CreateTestUser(t, ctx, pool, false)
+	userB := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeX := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001") // Cafetería La Plaza
 	placeY := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000004") // Parque Cultural
 
@@ -169,17 +139,16 @@ func TestCheckIn_Nonce_UserMismatch_And_PlaceMismatch(t *testing.T) {
 		CheckInNonce: initResp.CheckInNonce,
 		PhotoKey:     initResp.PhotoKey,
 	})
-	if !errors.Is(err, ErrInvalidCheckInNonce) {
+	if !errors.Is(err, service.ErrInvalidCheckInNonce) {
 		t.Fatalf("expected ErrInvalidCheckInNonce when user B attempts to use user A's nonce, got: %v", err)
 	}
 
-	// Re-initiate for User A since previous attempt did not consume nonce (session mismatch returns before Del)
 	// Attack 2: User A tries to confirm at Place Y with Place X's nonce
 	_, err = svc.Confirm(ctx, userA, placeY, domain.CheckInConfirmRequest{
 		CheckInNonce: initResp.CheckInNonce,
 		PhotoKey:     initResp.PhotoKey,
 	})
-	if !errors.Is(err, ErrInvalidCheckInNonce) {
+	if !errors.Is(err, service.ErrInvalidCheckInNonce) {
 		t.Fatalf("expected ErrInvalidCheckInNonce when confirming at Place Y with Place X's nonce, got: %v", err)
 	}
 }
@@ -196,9 +165,9 @@ func TestCheckIn_Geofence_CoordsPersisted(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	expectedLat := 11.01102
@@ -239,9 +208,9 @@ func TestCheckIn_Geofence_OutOfRange(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001") // Cafetería La Plaza in Barranquilla
 
 	// Bogotá coordinates (approx 1000km away)
@@ -249,7 +218,7 @@ func TestCheckIn_Geofence_OutOfRange(t *testing.T) {
 		Lat: 4.7110,
 		Lon: -74.0721,
 	})
-	if !errors.Is(err, ErrNotWithinGeofence) {
+	if !errors.Is(err, service.ErrNotWithinGeofence) {
 		t.Fatalf("expected ErrNotWithinGeofence, got: %v", err)
 	}
 }
@@ -266,9 +235,9 @@ func TestCheckIn_Concurrency_OnePerDay(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	// Pre-create two distinct valid nonces for this user and place
@@ -284,7 +253,7 @@ func TestCheckIn_Concurrency_OnePerDay(t *testing.T) {
 	// Insert second session manually into Redis
 	nonce2 := uuid.New().String()
 	photoKey2 := fmt.Sprintf("checkins/%s/race2.jpg", userID.String())
-	session2 := checkInSession{
+	session2 := service.CheckInSession{
 		UserID:   userID,
 		PlaceID:  placeID,
 		PhotoKey: photoKey2,
@@ -293,7 +262,7 @@ func TestCheckIn_Concurrency_OnePerDay(t *testing.T) {
 		IssuedAt: time.Now().UTC(),
 	}
 	encoded2, _ := json.Marshal(session2)
-	_ = rdb.Set(ctx, checkInNonceKey(nonce2), encoded2, nonceTTL).Err()
+	_ = rdb.Set(ctx, service.CheckInNonceKey(nonce2), encoded2, 90*time.Second).Err()
 
 	var wg sync.WaitGroup
 	successCount := 0
@@ -310,7 +279,7 @@ func TestCheckIn_Concurrency_OnePerDay(t *testing.T) {
 		defer mu.Unlock()
 		if cErr == nil {
 			successCount++
-		} else if errors.Is(cErr, ErrAlreadyCheckedIn) {
+		} else if errors.Is(cErr, service.ErrAlreadyCheckedIn) {
 			duplicateCount++
 		} else {
 			t.Errorf("unexpected error in concurrent confirm: %v", cErr)
@@ -342,9 +311,9 @@ func TestCheckIn_OrphanPhoto_CleanupOnDBFailure(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userID := createTestUser(t, ctx, pool, false)
+	userID := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	// First successful check-in
@@ -369,7 +338,7 @@ func TestCheckIn_OrphanPhoto_CleanupOnDBFailure(t *testing.T) {
 	photoKey2 := fmt.Sprintf("checkins/%s/orphan.jpg", userID.String())
 	mockStore.StoredFiles[photoKey2] = []byte("photo-bytes")
 
-	session2 := checkInSession{
+	session2 := service.CheckInSession{
 		UserID:   userID,
 		PlaceID:  placeID,
 		PhotoKey: photoKey2,
@@ -378,13 +347,13 @@ func TestCheckIn_OrphanPhoto_CleanupOnDBFailure(t *testing.T) {
 		IssuedAt: time.Now().UTC(),
 	}
 	enc, _ := json.Marshal(session2)
-	_ = rdb.Set(ctx, checkInNonceKey(nonce2), enc, nonceTTL).Err()
+	_ = rdb.Set(ctx, service.CheckInNonceKey(nonce2), enc, 90*time.Second).Err()
 
 	_, err = svc.Confirm(ctx, userID, placeID, domain.CheckInConfirmRequest{
 		CheckInNonce: nonce2,
 		PhotoKey:     photoKey2,
 	})
-	if !errors.Is(err, ErrAlreadyCheckedIn) {
+	if !errors.Is(err, service.ErrAlreadyCheckedIn) {
 		t.Fatalf("expected ErrAlreadyCheckedIn, got: %v", err)
 	}
 
@@ -406,9 +375,9 @@ func TestCheckIn_ProtectedMinor_RestrictedPlace(t *testing.T) {
 	mockStore := testhelper.NewMockStorage()
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 	pr := repo.NewPlanRepository(pool)
-	svc := NewCheckInService(cr, pr, mockStore, rdb)
+	svc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	minorUser := createTestUser(t, ctx, pool, true) // isProtected = true
+	minorUser := testhelper.CreateTestUser(t, ctx, pool, true) // isProtected = true
 	// Place 2: Bar El Rincón (minor_suitability = 'NO', lat: 11.0220, lon: -74.8200)
 	restrictedPlace := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000002")
 
@@ -416,7 +385,7 @@ func TestCheckIn_ProtectedMinor_RestrictedPlace(t *testing.T) {
 		Lat: 11.0220,
 		Lon: -74.8200,
 	})
-	if !errors.Is(err, ErrPlaceRestricted) {
+	if !errors.Is(err, service.ErrPlaceRestricted) {
 		t.Fatalf("expected ErrPlaceRestricted for protected minor at restricted place, got: %v", err)
 	}
 }

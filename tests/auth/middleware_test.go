@@ -1,4 +1,4 @@
-package middleware
+package auth_test
 
 import (
 	"context"
@@ -9,29 +9,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
 	"github.com/tuusuario/candela-api/internal/repo"
 	"github.com/tuusuario/candela-api/internal/service"
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/web/middleware"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
-}
-
-func generateTestJWT(secret string, userID uuid.UUID, accountStatus string, isProtected bool, expiry time.Time) string {
-	claims := jwt.MapClaims{
-		"sub":            userID.String(),
-		"email":          "test@example.com",
-		"account_status": accountStatus,
-		"is_protected":   isProtected,
-		"exp":            expiry.Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, _ := token.SignedString([]byte(secret))
-	return signed
 }
 
 // 1. Revocación y Blacklist en Redis:
@@ -62,10 +49,10 @@ func TestAuthMiddleware_RedisBlacklist_DeleteAccount(t *testing.T) {
 	}
 
 	tokenExpiry := time.Now().Add(15 * time.Minute)
-	tokenStr := generateTestJWT(secret, userID, "ACTIVE", false, tokenExpiry)
+	tokenStr := testhelper.GenerateTestJWT(secret, userID, "ACTIVE", false, tokenExpiry)
 
 	router := gin.New()
-	router.Use(AuthMiddleware(secret, rdb))
+	router.Use(middleware.AuthMiddleware(secret, rdb))
 	router.GET("/test-protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "authorized"})
 	})
@@ -87,7 +74,7 @@ func TestAuthMiddleware_RedisBlacklist_DeleteAccount(t *testing.T) {
 	}
 
 	// Verify Redis blacklist key was set
-	blockKey := fmt.Sprintf(jwtBlocklistKey, userID.String())
+	blockKey := fmt.Sprintf(middleware.JWTBlocklistKey, userID.String())
 	exists, err := rdb.Exists(ctx, blockKey).Result()
 	if err != nil || exists == 0 {
 		t.Fatalf("expected Redis blocklist key %s to exist, err: %v", blockKey, err)
@@ -114,13 +101,13 @@ func TestAuthMiddleware_SuspendedAccount(t *testing.T) {
 	secret := "test-secret-at-least-32-characters-long"
 
 	router := gin.New()
-	router.Use(AuthMiddleware(secret, rdb))
+	router.Use(middleware.AuthMiddleware(secret, rdb))
 	router.GET("/test-protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	userID := uuid.New()
-	suspendedToken := generateTestJWT(secret, userID, "SUSPENDED", false, time.Now().Add(15*time.Minute))
+	suspendedToken := testhelper.GenerateTestJWT(secret, userID, "SUSPENDED", false, time.Now().Add(15*time.Minute))
 
 	req := httptest.NewRequest(http.MethodGet, "/test-protected", nil)
 	req.Header.Set("Authorization", "Bearer "+suspendedToken)
@@ -142,13 +129,13 @@ func TestAuthMiddleware_DeletedAccount(t *testing.T) {
 	secret := "test-secret-at-least-32-characters-long"
 
 	router := gin.New()
-	router.Use(AuthMiddleware(secret, rdb))
+	router.Use(middleware.AuthMiddleware(secret, rdb))
 	router.GET("/test-protected", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	userID := uuid.New()
-	deletedToken := generateTestJWT(secret, userID, "DELETED", false, time.Now().Add(15*time.Minute))
+	deletedToken := testhelper.GenerateTestJWT(secret, userID, "DELETED", false, time.Now().Add(15*time.Minute))
 
 	req := httptest.NewRequest(http.MethodGet, "/test-protected", nil)
 	req.Header.Set("Authorization", "Bearer "+deletedToken)

@@ -1,4 +1,4 @@
-package repo
+package auth_test
 
 import (
 	"context"
@@ -9,7 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/repo"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 // Detección de reuso de Refresh Tokens contra PostgreSQL:
@@ -21,7 +22,7 @@ func TestRefreshTokenRepo_ReuseDetection_RevokesAllSessions(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	repo := NewRefreshTokenRepository(pool)
+	rRepo := repo.NewRefreshTokenRepository(pool)
 
 	// Create test user
 	userID := uuid.New()
@@ -43,13 +44,13 @@ func TestRefreshTokenRepo_ReuseDetection_RevokesAllSessions(t *testing.T) {
 	rt4 := "test-refresh-token-4-" + uuid.New().String()
 
 	// 1. Create initial refresh token (RT1)
-	err = repo.Create(ctx, userID, rt1, time.Now().Add(24*time.Hour))
+	err = rRepo.Create(ctx, userID, rt1, time.Now().Add(24*time.Hour))
 	if err != nil {
 		t.Fatalf("failed to create RT1: %v", err)
 	}
 
 	// 2. Legitimate rotation: RT1 -> RT2
-	rotatedUID, err := repo.Rotate(ctx, rt1, rt2, time.Now().Add(24*time.Hour))
+	rotatedUID, err := rRepo.Rotate(ctx, rt1, rt2, time.Now().Add(24*time.Hour))
 	if err != nil {
 		t.Fatalf("Rotate RT1 -> RT2 failed: %v", err)
 	}
@@ -68,8 +69,8 @@ func TestRefreshTokenRepo_ReuseDetection_RevokesAllSessions(t *testing.T) {
 	}
 
 	// 3. Replay attack: Attacker attempts to reuse the already rotated RT1 to obtain RT3
-	_, err = repo.Rotate(ctx, rt1, rt3, time.Now().Add(24*time.Hour))
-	if !errors.Is(err, ErrRefreshTokenInvalid) {
+	_, err = rRepo.Rotate(ctx, rt1, rt3, time.Now().Add(24*time.Hour))
+	if !errors.Is(err, repo.ErrRefreshTokenInvalid) {
 		t.Fatalf("expected ErrRefreshTokenInvalid when replaying RT1, got: %v", err)
 	}
 
@@ -86,8 +87,8 @@ func TestRefreshTokenRepo_ReuseDetection_RevokesAllSessions(t *testing.T) {
 	}
 
 	// 5. Legitimate user attempting to use RT2 will now be rejected because RT2 was revoked on reuse!
-	_, err = repo.Rotate(ctx, rt2, rt4, time.Now().Add(24*time.Hour))
-	if !errors.Is(err, ErrRefreshTokenInvalid) {
+	_, err = rRepo.Rotate(ctx, rt2, rt4, time.Now().Add(24*time.Hour))
+	if !errors.Is(err, repo.ErrRefreshTokenInvalid) {
 		t.Fatalf("expected ErrRefreshTokenInvalid for RT2 after session revocation, got: %v", err)
 	}
 }

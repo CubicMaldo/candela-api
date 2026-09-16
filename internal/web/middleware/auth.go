@@ -13,6 +13,7 @@ import (
 )
 
 const jwtBlocklistKey = "jwt:blocklist:%s"
+const JWTBlocklistKey = "jwt:blocklist:%s"
 
 func AuthMiddleware(secret string, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -59,6 +60,7 @@ func AuthMiddleware(secret string, rdb *redis.Client) gin.HandlerFunc {
 
 		// Check JWT blocklist (set on account deletion).
 		blockKey := fmt.Sprintf(jwtBlocklistKey, userIDStr)
+		blockKey := fmt.Sprintf(JWTBlocklistKey, userIDStr)
 		if exists, _ := rdb.Exists(c.Request.Context(), blockKey).Result(); exists > 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "account no longer active"})
 			return

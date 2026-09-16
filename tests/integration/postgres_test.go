@@ -1,4 +1,4 @@
-package repo
+package integration_test
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/repo"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 // 1. PostGIS Geofencing:
@@ -22,7 +23,7 @@ func TestPostGIS_Geofencing(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	cr := NewCheckInRepository(pool, "America/Bogota")
+	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 
 	testPlaceID := uuid.New()
 	centerLon := -74.8080
@@ -181,8 +182,8 @@ func TestDeleteAccount_ReferentialIntegrityAndCascades(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	userRepo := NewUserRepository(pool)
-	refreshRepo := NewRefreshTokenRepository(pool)
+	userRepo := repo.NewUserRepository(pool)
+	refreshRepo := repo.NewRefreshTokenRepository(pool)
 
 	// Create user to delete and peer user
 	userToDelete := uuid.New()
@@ -419,4 +420,3 @@ func TestPostGIS_Geofence_Constraint_20_to_150(t *testing.T) {
 		t.Fatalf("expected error for geofence_meters 151, but succeeded")
 	}
 }
-

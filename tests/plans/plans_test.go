@@ -1,4 +1,4 @@
-package service
+package plans_test
 
 import (
 	"context"
@@ -9,7 +9,8 @@ import (
 
 	"github.com/tuusuario/candela-api/internal/domain"
 	"github.com/tuusuario/candela-api/internal/repo"
-	"github.com/tuusuario/candela-api/internal/testhelper"
+	"github.com/tuusuario/candela-api/internal/service"
+	"github.com/tuusuario/candela-api/tests/testhelper"
 )
 
 // 4.1 Restricciones de creación de planes 1:1 (INVITE)
@@ -25,22 +26,22 @@ func TestPlanService_Create_InviteRestrictions(t *testing.T) {
 	fr := repo.NewFriendshipRepository(pool)
 	plr := repo.NewPlaceRepository(pool)
 	pr := repo.NewPlanRepository(pool)
-	planSvc := NewPlanService(pr, fr, plr)
+	planSvc := service.NewPlanService(pr, fr, plr)
 
-	userA := createTestUser(t, ctx, pool, false)
-	userNotFriend := createTestUser(t, ctx, pool, false)
-	userBlocked := createTestUser(t, ctx, pool, false)
-	userFriend := createTestUser(t, ctx, pool, false)
+	userA := testhelper.CreateTestUser(t, ctx, pool, false)
+	userNotFriend := testhelper.CreateTestUser(t, ctx, pool, false)
+	userBlocked := testhelper.CreateTestUser(t, ctx, pool, false)
+	userFriend := testhelper.CreateTestUser(t, ctx, pool, false)
 
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001") // Cafetería La Plaza
 
 	// Setup friendships
-	makeFriends(t, ctx, pool, userA, userFriend)
-	makeFriends(t, ctx, pool, userA, userBlocked)
+	testhelper.MakeFriends(t, ctx, pool, userA, userFriend)
+	testhelper.MakeFriends(t, ctx, pool, userA, userBlocked)
 	// Block userBlocked
 	ur := repo.NewUserRepository(pool)
 	rr := repo.NewRefreshTokenRepository(pool)
-	userSvc := NewUserService(ur, fr, rr, testhelper.NewMockStorage(), rdb)
+	userSvc := service.NewUserService(ur, fr, rr, testhelper.NewMockStorage(), rdb)
 	if err := userSvc.Block(ctx, userA, userBlocked); err != nil {
 		t.Fatalf("Block failed: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestPlanService_Create_InviteRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityInvite,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrTargetNotFriend) {
+	if !errors.Is(err, service.ErrTargetNotFriend) {
 		t.Fatalf("expected ErrTargetNotFriend, got: %v", err)
 	}
 
@@ -63,7 +64,7 @@ func TestPlanService_Create_InviteRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityInvite,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrUserNotVisible) {
+	if !errors.Is(err, service.ErrUserNotVisible) {
 		t.Fatalf("expected ErrUserNotVisible for blocked target, got: %v", err)
 	}
 
@@ -88,7 +89,7 @@ func TestPlanService_Create_InviteRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityInvite,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrDuplicatePlan) {
+	if !errors.Is(err, service.ErrDuplicatePlan) {
 		t.Fatalf("expected ErrDuplicatePlan, got: %v", err)
 	}
 }
@@ -105,10 +106,10 @@ func TestPlanService_Create_OpenPlanRestrictions(t *testing.T) {
 	fr := repo.NewFriendshipRepository(pool)
 	plr := repo.NewPlaceRepository(pool)
 	pr := repo.NewPlanRepository(pool)
-	planSvc := NewPlanService(pr, fr, plr)
+	planSvc := service.NewPlanService(pr, fr, plr)
 
-	userA := createTestUser(t, ctx, pool, false)
-	targetUser := createTestUser(t, ctx, pool, false)
+	userA := testhelper.CreateTestUser(t, ctx, pool, false)
+	targetUser := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	// 1. Open plans must not provide target_user_id -> ErrTargetNotAllowed
@@ -118,7 +119,7 @@ func TestPlanService_Create_OpenPlanRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityPublic,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrTargetNotAllowed) {
+	if !errors.Is(err, service.ErrTargetNotAllowed) {
 		t.Fatalf("expected ErrTargetNotAllowed when target provided for PUBLIC plan, got: %v", err)
 	}
 
@@ -128,7 +129,7 @@ func TestPlanService_Create_OpenPlanRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityFriends,
 		DeadlineHours: 24,
 	})
-	if !errors.Is(err, ErrTargetNotAllowed) {
+	if !errors.Is(err, service.ErrTargetNotAllowed) {
 		t.Fatalf("expected ErrTargetNotAllowed when target provided for FRIENDS plan, got: %v", err)
 	}
 
@@ -151,7 +152,7 @@ func TestPlanService_Create_OpenPlanRestrictions(t *testing.T) {
 		Visibility:    domain.PlanVisibilityFriends,
 		DeadlineHours: 48,
 	})
-	if !errors.Is(err, ErrDuplicateOpenPlan) {
+	if !errors.Is(err, service.ErrDuplicateOpenPlan) {
 		t.Fatalf("expected ErrDuplicateOpenPlan, got: %v", err)
 	}
 }
@@ -168,9 +169,9 @@ func TestPlanService_Create_DeadlineValidation(t *testing.T) {
 	fr := repo.NewFriendshipRepository(pool)
 	plr := repo.NewPlaceRepository(pool)
 	pr := repo.NewPlanRepository(pool)
-	planSvc := NewPlanService(pr, fr, plr)
+	planSvc := service.NewPlanService(pr, fr, plr)
 
-	userA := createTestUser(t, ctx, pool, false)
+	userA := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001")
 
 	invalidHours := []int{0, 1, 12, 36, 50, 96, -24}
@@ -180,7 +181,7 @@ func TestPlanService_Create_DeadlineValidation(t *testing.T) {
 			Visibility:    domain.PlanVisibilityPublic,
 			DeadlineHours: h,
 		})
-		if !errors.Is(err, ErrInvalidDeadlineHours) {
+		if !errors.Is(err, service.ErrInvalidDeadlineHours) {
 			t.Errorf("expected ErrInvalidDeadlineHours for deadline %d hours, got: %v", h, err)
 		}
 	}
@@ -226,14 +227,14 @@ func TestPlanService_CheckInAutoCompletion(t *testing.T) {
 	pr := repo.NewPlanRepository(pool)
 	cr := repo.NewCheckInRepository(pool, "America/Bogota")
 
-	planSvc := NewPlanService(pr, fr, plr)
-	checkInSvc := NewCheckInService(cr, pr, mockStore, rdb)
+	planSvc := service.NewPlanService(pr, fr, plr)
+	checkInSvc := service.NewCheckInService(cr, pr, mockStore, rdb)
 
-	userCreator := createTestUser(t, ctx, pool, false)
-	userGuest := createTestUser(t, ctx, pool, false)
+	userCreator := testhelper.CreateTestUser(t, ctx, pool, false)
+	userGuest := testhelper.CreateTestUser(t, ctx, pool, false)
 	placeID := uuid.MustParse("bbbbbbbb-0000-0000-0000-000000000001") // Cafetería La Plaza: 11.0110, -74.8080
 
-	makeFriends(t, ctx, pool, userCreator, userGuest)
+	testhelper.MakeFriends(t, ctx, pool, userCreator, userGuest)
 
 	// 1. Creator proposes INVITE plan to Guest
 	msg := "Vamos por un café!"

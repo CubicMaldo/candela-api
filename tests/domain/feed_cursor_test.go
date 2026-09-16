@@ -1,4 +1,4 @@
-package domain
+package domain_test
 
 import (
 	"encoding/base64"
@@ -6,16 +6,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/tuusuario/candela-api/internal/domain"
 )
 
 func TestFeedCursorRoundTrip(t *testing.T) {
-	original := FeedCursor{
+	original := domain.FeedCursor{
 		Layer:       2,
 		CheckedInAt: time.Date(2024, time.June, 5, 21, 30, 15, 123456789, time.UTC),
 		EventID:     uuid.MustParse("6ba7b810-9dad-11d1-80b4-00c04fd430c8"),
 	}
 
-	decoded, err := DecodeFeedCursor(original.Encode())
+	decoded, err := domain.DecodeFeedCursor(original.Encode())
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
@@ -33,7 +35,7 @@ func TestFeedCursorRoundTrip(t *testing.T) {
 }
 
 func TestFeedCursorEncodeIsURLSafe(t *testing.T) {
-	token := FeedCursor{Layer: 1, CheckedInAt: time.Now().UTC(), EventID: uuid.New()}.Encode()
+	token := domain.FeedCursor{Layer: 1, CheckedInAt: time.Now().UTC(), EventID: uuid.New()}.Encode()
 	for _, r := range token {
 		ok := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
 			(r >= '0' && r <= '9') || r == '-' || r == '_'
@@ -55,15 +57,13 @@ func TestDecodeFeedCursorRejectsGarbage(t *testing.T) {
 
 	for name, token := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := DecodeFeedCursor(token); err != ErrInvalidCursor {
+			if _, err := domain.DecodeFeedCursor(token); err != domain.ErrInvalidCursor {
 				t.Errorf("got err = %v, want ErrInvalidCursor", err)
 			}
 		})
 	}
 }
 
-// encodeRaw builds a cursor token from an already-formed payload, so decode
-// failures can be exercised without going through Encode.
 func encodeRaw(payload string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(payload))
 }

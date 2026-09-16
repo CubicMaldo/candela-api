@@ -41,6 +41,7 @@ const (
 )
 
 // checkInSession is the server-side state bound to a check-in nonce. It holds
+// CheckInSession is the server-side state bound to a check-in nonce. It holds
 // everything Confirm needs that must not be taken from the client: the
 // server-validated GPS fix and the moment the session was opened.
 //
@@ -51,6 +52,7 @@ const (
 // request could set it to whatever passes. It is now recorded as a fraud
 // signal (TimestampValid) instead of gating the flow.
 type checkInSession struct {
+type CheckInSession struct {
 	UserID   uuid.UUID `json:"user_id"`
 	PlaceID  uuid.UUID `json:"place_id"`
 	PhotoKey string    `json:"photo_key"`
@@ -71,6 +73,7 @@ func NewCheckInService(cr *repo.CheckInRepository, pr *repo.PlanRepository, st s
 }
 
 func checkInNonceKey(nonce string) string { return "checkin:nonce:" + nonce }
+func CheckInNonceKey(nonce string) string { return "checkin:nonce:" + nonce }
 
 // discardPhoto removes an uploaded object that will never be referenced by a
 // check-in row. Best effort: the check-in has already failed, so a failed
@@ -128,6 +131,7 @@ func (s *CheckInService) Initiate(
 	)
 
 	session := checkInSession{
+	session := CheckInSession{
 		UserID:   userID,
 		PlaceID:  placeID,
 		PhotoKey: photoKey,
@@ -140,6 +144,7 @@ func (s *CheckInService) Initiate(
 		return nil, fmt.Errorf("failed to encode check-in session: %w", err)
 	}
 	if err := s.redis.Set(ctx, checkInNonceKey(nonce), encoded, nonceTTL).Err(); err != nil {
+	if err := s.redis.Set(ctx, CheckInNonceKey(nonce), encoded, nonceTTL).Err(); err != nil {
 		return nil, fmt.Errorf("failed to store check-in session: %w", err)
 	}
 
@@ -166,6 +171,7 @@ func (s *CheckInService) Confirm(
 ) (*domain.CheckInResult, error) {
 
 	nonceKey := checkInNonceKey(req.CheckInNonce)
+	nonceKey := CheckInNonceKey(req.CheckInNonce)
 	raw, err := s.redis.Get(ctx, nonceKey).Result()
 	if err == redis.Nil {
 		return nil, ErrInvalidCheckInNonce
@@ -175,6 +181,7 @@ func (s *CheckInService) Confirm(
 	}
 
 	var session checkInSession
+	var session CheckInSession
 	if err := json.Unmarshal([]byte(raw), &session); err != nil {
 		return nil, ErrInvalidCheckInNonce
 	}
