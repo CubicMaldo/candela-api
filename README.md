@@ -88,6 +88,18 @@ candela-api/
 │   ├── service/                # Lógica de negocio y worker Janitor
 │   ├── web/                    # Definición de rutas y middlewares
 │   └── webdeps/                # Contenedor de dependencias de la aplicación
+├── tests/                      # Suite modular de pruebas (unitarias, integración y seguridad)
+│   ├── auth/                   # Autenticación, JWT, rotación y revocación
+│   ├── checkin/                # Ciclo de vida y validaciones de check-in
+│   ├── domain/                 # Entidades y lógica pura de negocio
+│   ├── dos/                    # Protección Slowloris, payload limits y thundering herd
+│   ├── integration/            # Pruebas de integración con PostgreSQL y PostGIS
+│   ├── janitor/                # Tareas en segundo plano y limpieza de fotos/sesiones
+│   ├── plans/                  # Ciclo de vida y visibilidad de planes
+│   ├── privacy/                # Modos de privacidad y bloqueo de usuarios
+│   ├── race/                   # Condiciones de carrera (concurrencia de check-in y rate limit)
+│   ├── spoofing/               # Path traversal, IP spoofing y alteración de tokens
+│   └── testhelper/             # Mocks (ObjectStorage) y helpers de base de datos/Redis
 ├── Dockerfile                  # Imagen para despliegue de producción
 ├── Dockerfile.dev              # Imagen de desarrollo con Air
 ├── docker-compose.yml          # Postgres, PostGIS, Redis, MinIO y API
@@ -104,14 +116,14 @@ El esquema relacional se gestiona en PostgreSQL con extensiones `postgis` y `uui
 
 * **`users`**: Identidad del usuario, contraseña hasheada (bcrypt), fecha de nacimiento, estado de cuenta (`PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`), modo de privacidad (`PUBLIC`, `FRIENDS`, `PRIVATE`), soporte de tutor legal para menores, contadores de puntos totales/temporada y estado de rachas.
 * **`businesses`**: Empresas y operadores comerciales (`plan`: `FREE`, `BASIC`, `PREMIUM`).
-* **`places`**: Lugares físicos con categorías (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), aptitud para menores (`minor_suitability`: `YES`, `NO`, `PENDING`), columna geoespacial `location GEOGRAPHY(POINT, 4326)` y radio de geocerca (`geofence_meters` entre 20m y 150m).
+* **`places`**: Lugares físicos con categorías (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), aptitud para menores (`minor_suitability`: `YES`, `NO`, `PENDING`), columna geoespacial `location GEOGRAPHY(POINT, 4326)` y radio de geocerca (`geofence_meters` entre 20m y 150m, por defecto 80m, validado según el tipo de organizador: usuario hasta 80m, negocio hasta 120m, evento hasta 150m).
 * **`check_ins`**: Registro presencial con coordenadas reales, foto (`photo_url`, `photo_key`, `photo_expires_at`, `photo_is_permanent`), validación de geocerca y restricción de **un solo check-in exitoso por lugar por día** (`idx_checkins_one_per_place_per_day` evaluado según la zona `America/Bogota`).
 * **`plans` & `plan_participants`**: Planes sociales con plazos de 24, 48 o 72 horas. Soporta modo individual (`INVITE`) o abiertos (`FRIENDS`, `PUBLIC`).
 * **`friendships`**: Amistades bidireccionales con orden canónico (`user_id_a < user_id_b`) y soporte de bloqueos (`status`: `pending`, `accepted`, `blocked`).
 * **`follows`**: Lugares favoritos que el usuario sigue para recibir actualizaciones.
 * **`point_transactions`**: Auditoría de puntos otorgados por check-ins, planes o referidos.
 * **`reports`**: Sistema de denuncias de contenido sobre fotos, usuarios o lugares.
-* **`refresh_tokens`**: Sesiones móviles persistentes con hash criptográfico SHA-256 (`token_hash`) y rotación transaccional.
+* **`refresh_tokens`**: Sesiones móviles persistentes con hash criptográfico SHA-256 (`token_hash`), rotación transaccional y detección de reuso de tokens (revocación en cascada de todas las sesiones activas del usuario según RFC 6819 ante repeticiones maliciosas).
 
 ---
 
@@ -141,13 +153,16 @@ sequenceDiagram
     C->>S3: Subir foto directamente (PUT upload_url)
 
     C->>A: POST /places/:id/checkin/confirm (nonce, photo_key, permanent?)
-    A->>R: Obtener y ELIMINAR nonce (un solo uso)
+    A->>A: Validar path traversal y aislamiento de usuario (checkins/{user_id}/)
+    A->>R: Obtener y ELIMINAR nonce atómicamente (GetDel, previene carreras)
     A->>DB: Insertar check_in (con coords iniciales verificadas)
     A->>DB: Actualizar racha semanal y calcular multiplicadores
     A->>DB: Otorgar puntos base, bonus y completar planes pendientes
     A-->>C: 200 OK (checkin, photo_view_url 24h, breakdown de puntos)
 ```
 
+* **Consumo Atómico y Antirace (`GetDel`)**: La sesión temporal se extrae y elimina de Redis en una única operación atómica (`GetDel`), asegurando uso único estricto, previniendo check-ins duplicados concurrentes y evitando que una petición concurrente fallida elimine la foto de la petición ganadora.
+* **Protección contra Path Traversal y Suplantación**: El servidor rechaza cualquier `photo_key` con secuencias de salto de directorio (`..`, `\`, `%2e`) y fuerza que comience obligatoriamente con el prefijo canónico del usuario autenticado (`checkins/<user_id>/`).
 * **Fotos efímeras vs permanentes**: Las fotos expiran por defecto en 24 horas y son borradas por el *Janitor*. El usuario puede marcarlas como permanentes mientras el evento siga activo (últimas 4 horas).
 
 ---
@@ -190,7 +205,7 @@ $$\text{Base64}(\text{Layer} \mid \text{CheckedInAt} \mid \text{EventID})$$
   * **Leyenda**: $\ge 5000$ pts
 * **Rankings**:
   * **Global**: Solo para usuarios activos con perfil `PUBLIC` y `ranking_opt_in = true`.
-  * **Amigos**: Ranking entre amigos directos. Ambos con caché en Redis.
+  * **Amigos**: Ranking entre amigos directos. Ambos con caché en Redis y protección contra *thundering herd* / estampida de caché mediante `singleflight` (las peticiones concurrentes ante fallos de caché se unifican en una sola consulta a la base de datos).
 
 ---
 
@@ -208,11 +223,21 @@ $$\text{Base64}(\text{Layer} \mid \text{CheckedInAt} \mid \text{EventID})$$
 1. **Tokens de Acceso y Refresco**:
    * **JWT de acceso**: Tiempo de vida corto (15 minutos) para minimizar riesgos de intercepción.
    * **Refresh Tokens**: Cadenas criptográficas seguras de 256 bits (`crypto/rand`). Se guardan hasheadas con SHA-256 en la base de datos y se rotan atómicamente en una sola transacción en cada llamado a `/auth/refresh`.
-   * **Baja de cuenta**: Al eliminar la cuenta, el JWT actual entra inmediatamente a una lista negra en Redis (`jwt:blocklist:<user_id>`) hasta que transcurra su tiempo de vida original, y todos los refresh tokens se revocan en la base de datos.
-2. **Rate Limiting Inteligente**:
+   * **Detección de Reuso de Tokens (RFC 6819)**: Si un refresh token ya revocado es reutilizado, el sistema detecta el intento de repetición y revoca inmediatamente todas las sesiones activas del usuario.
+   * **Baja de cuenta y Estados**: Al eliminar la cuenta, el JWT actual entra inmediatamente a una lista negra en Redis (`jwt:blocklist:<user_id>`) hasta agotar su tiempo de vida, y todos los refresh tokens se revocan en la base de datos. Peticiones con tokens de cuentas `SUSPENDED` o `DELETED` son bloqueadas con `403 Forbidden`.
+2. **Rate Limiting Atómico y Resiliente**:
+   * Implementado con scripts **Lua en Redis** (`INCR` + `PEXPIRE` / autoreparación de TTL), garantizando atomicidad y previniendo condiciones de carrera o llaves sin expiración.
    * Endpoints sensibles a fuerza bruta (`/register`, `/login`): **10 peticiones/minuto**.
    * Endpoints de mantenimiento de sesión (`/refresh`, `/logout`): **120 peticiones/minuto** (para evitar bloquear a usuarios conectados a redes Wi-Fi públicas o de campus con NAT compartido).
-3. **Janitor Worker Concurrente ([`janitor.go`](file:///home/cubic/projects/candela/candela-api/internal/service/janitor.go))**:
+3. **Mitigación de DoS y Slowloris**:
+   * **Timeouts HTTP en Servidor**: Servidor configurado con `ReadHeaderTimeout` (5s) para mitigar ataques Slowloris, además de `ReadTimeout` (15s), `WriteTimeout` (30s), `IdleTimeout` (60s) y `MaxHeaderBytes` (1MB).
+   * **Límite de Tamaño de Petición (Payload Bomb Protection)**: Middleware global `MaxBodySize` configurado a 1 MB que rechaza cuerpos de petición desproporcionados (`413 Request Entity Too Large`) y envuelve el reader con `http.MaxBytesReader` para proteger contra agotamiento de memoria (OOM).
+   * **Protección contra Thundering Herd**: Integración de `singleflight` en las consultas de rankings para unificar peticiones concurrentes cuando expira la caché de Redis.
+4. **Protección contra Spoofing y Path Traversal**:
+   * **IP Spoofing**: Configuración estricta de proxies de confianza en Gin mediante la variable de entorno `TRUSTED_PROXIES`. Si no se especifica, se ignora cualquier cabecera `X-Forwarded-For` arbitraria y se confía únicamente en la dirección remota real (`RemoteAddr`).
+   * **Path Traversal & Photo Key Isolation**: Validación defensiva contra secuencias de escape (`..`, `\`, `%2e`) y exigencia del prefijo `checkins/<user_id>/` en las fotos confirmadas.
+   * **Consumo Atómico de Sesión (`GetDel`)**: Recuperación y eliminación atómica del nonce en Redis para evitar condiciones de carrera concurrentes en check-ins.
+5. **Janitor Worker Concurrente**:
    * Proceso en background que corre periódicamente cada hora.
    * Reclama lotes de fotos expiradas en la base de datos utilizando `FOR UPDATE SKIP LOCKED`, garantizando que múltiples instancias de la API puedan correr concurrentemente sin disputar los mismos registros.
    * Borra los objetos huérfanos de MinIO y depura tokens de refresco vencidos.
@@ -341,7 +366,7 @@ make redis-cli       # Abre la consola interactiva de Redis
 make migrate-up      # Aplica migraciones SQL pendientes
 make migrate-down    # Revierte la última migración
 make sqlc-generate   # Regenera el código de repositorios a partir de db/queries/
-make test            # Ejecuta las pruebas unitarias del proyecto
+make test            # Ejecuta la suite de pruebas (unitarias, integración, concurrencia, DoS, spoofing)
 ```
 
 ---
@@ -359,6 +384,7 @@ Definidas en el archivo `.env`:
 | `REDIS_URL` | Conexión a Redis con contraseña. | `redis://:candela_redis_pass@localhost:6379/0` |
 | `JWT_SECRET` | Llave secreta para firmar tokens JWT (mínimo 32 caracteres en producción). | `insecure-dev-only-secret` |
 | `GOOGLE_CLIENT_ID`| Client ID de Google OAuth para validar ID Tokens móviles. | Opcional en desarrollo |
+| `TRUSTED_PROXIES` | IPs o rangos CIDR de proxies reversos de confianza separados por comas para Gin (mitiga IP spoofing). | Opcional (por defecto confía únicamente en `RemoteAddr`) |
 | `STORAGE_ENDPOINT`| URL del servicio MinIO para la API interna. | `http://minio:9000` |
 | `STORAGE_PUBLIC_ENDPOINT`| URL alcanzable por dispositivos móviles/emuladores (e.g., loopback Android). | `http://10.0.2.2:9000` |
 | `STORAGE_ACCESS_KEY` | Usuario/Key de MinIO S3. | `minioadmin` |
