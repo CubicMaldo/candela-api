@@ -18,6 +18,9 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	}
 
 	router := gin.Default()
+	// Protect against JSON / payload bombs by limiting request bodies to 1MB
+	router.Use(middleware.MaxBodySize(1 << 20))
+
 	router.GET("/health", healthHandler(deps.Env))
 
 	// Credential endpoints are brute-force targets, so they stay tight.

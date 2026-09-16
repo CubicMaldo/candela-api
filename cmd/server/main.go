@@ -88,8 +88,13 @@ func main() {
 	).Run(janitorCtx)
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%s", cfg.Port),
-		Handler: router,
+		Addr:              fmt.Sprintf(":%s", cfg.Port),
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,  // Mitigates Slowloris by terminating slow header delivery
+		ReadTimeout:       15 * time.Second, // Maximum duration for reading the entire request
+		WriteTimeout:      30 * time.Second, // Maximum duration before timing out writes of the response
+		IdleTimeout:       60 * time.Second, // Maximum amount of time to wait for the next request when keep-alives are enabled
+		MaxHeaderBytes:    1 << 20,          // 1 MB maximum header size
 	}
 
 	go func() {
