@@ -92,8 +92,8 @@ CREATE TABLE places (
     minor_suitability VARCHAR(10)  NOT NULL DEFAULT 'PENDING'
                       CHECK (minor_suitability IN ('YES','NO','PENDING')),
     location          GEOGRAPHY(POINT, 4326) NOT NULL,
-    geofence_meters   INTEGER     NOT NULL DEFAULT 100
-                      CHECK (geofence_meters BETWEEN 50 AND 200),
+    geofence_meters   INTEGER     NOT NULL DEFAULT 80
+                      CHECK (geofence_meters BETWEEN 20 AND 150),
     business_id       UUID        REFERENCES businesses(business_id) ON DELETE SET NULL,
     is_verified       BOOLEAN     NOT NULL DEFAULT false,
     is_active         BOOLEAN     NOT NULL DEFAULT true,

@@ -104,7 +104,7 @@ El esquema relacional se gestiona en PostgreSQL con extensiones `postgis` y `uui
 
 * **`users`**: Identidad del usuario, contraseña hasheada (bcrypt), fecha de nacimiento, estado de cuenta (`PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`), modo de privacidad (`PUBLIC`, `FRIENDS`, `PRIVATE`), soporte de tutor legal para menores, contadores de puntos totales/temporada y estado de rachas.
 * **`businesses`**: Empresas y operadores comerciales (`plan`: `FREE`, `BASIC`, `PREMIUM`).
-* **`places`**: Lugares físicos con categorías (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), aptitud para menores (`minor_suitability`: `YES`, `NO`, `PENDING`), columna geoespacial `location GEOGRAPHY(POINT, 4326)` y radio de geocerca (`geofence_meters` entre 50m y 200m).
+* **`places`**: Lugares físicos con categorías (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), aptitud para menores (`minor_suitability`: `YES`, `NO`, `PENDING`), columna geoespacial `location GEOGRAPHY(POINT, 4326)` y radio de geocerca (`geofence_meters` entre 20m y 150m).
 * **`check_ins`**: Registro presencial con coordenadas reales, foto (`photo_url`, `photo_key`, `photo_expires_at`, `photo_is_permanent`), validación de geocerca y restricción de **un solo check-in exitoso por lugar por día** (`idx_checkins_one_per_place_per_day` evaluado según la zona `America/Bogota`).
 * **`plans` & `plan_participants`**: Planes sociales con plazos de 24, 48 o 72 horas. Soporta modo individual (`INVITE`) o abiertos (`FRIENDS`, `PUBLIC`).
 * **`friendships`**: Amistades bidireccionales con orden canónico (`user_id_a < user_id_b`) y soporte de bloqueos (`status`: `pending`, `accepted`, `blocked`).

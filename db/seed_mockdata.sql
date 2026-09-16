@@ -134,13 +134,13 @@ INSERT INTO places (
     ('bbbbbbbb-0000-0000-0000-000000000004', 'Parque Cultural del Caribe',
      'Gran parque urbano con zonas verdes, perfecto para planes al aire libre.',
      'PARK', 'YES',
-     ST_SetSRID(ST_MakePoint(-74.7990, 11.0040), 4326)::geography, 200,
+     ST_SetSRID(ST_MakePoint(-74.7990, 11.0040), 4326)::geography, 150,
      NULL, true, true),
 
     ('bbbbbbbb-0000-0000-0000-000000000005', 'Universidad del Norte',
      'Campus universitario con zonas comunes, plazoletas de comidas y biblioteca.',
      'UNIVERSITY', 'YES',
-     ST_SetSRID(ST_MakePoint(-74.8510, 11.0350), 4326)::geography, 200,
+     ST_SetSRID(ST_MakePoint(-74.8510, 11.0350), 4326)::geography, 150,
      NULL, true, true),
 
     ('bbbbbbbb-0000-0000-0000-000000000006', 'Restaurante Sabor Caribe',
