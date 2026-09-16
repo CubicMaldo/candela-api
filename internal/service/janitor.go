@@ -49,7 +49,6 @@ func (j *Janitor) Run(ctx context.Context) {
 }
 
 func (j *Janitor) sweep(ctx context.Context) {
-	j.sweepExpiredPhotos(ctx)
 	j.SweepExpiredPhotos(ctx)
 
 	removed, err := j.refreshRepo.DeleteExpired(ctx)
@@ -60,10 +59,8 @@ func (j *Janitor) sweep(ctx context.Context) {
 	}
 }
 
-// sweepExpiredPhotos deletes ephemeral photos past their viewing window,
 // SweepExpiredPhotos deletes ephemeral photos past their viewing window,
 // in batches so one sweep never holds a large transaction open.
-func (j *Janitor) sweepExpiredPhotos(ctx context.Context) {
 func (j *Janitor) SweepExpiredPhotos(ctx context.Context) {
 	total := 0
 	for {
