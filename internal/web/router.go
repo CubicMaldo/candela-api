@@ -1,6 +1,8 @@
 package web
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,15 @@ func NewRouter(deps webdeps.Dependencies) *gin.Engine {
 	}
 
 	router := gin.Default()
+
+	// Prevent IP spoofing: do not blindly trust arbitrary X-Forwarded-For headers.
+	// Only trust proxies configured via TRUSTED_PROXIES; otherwise rely strictly on RemoteAddr.
+	if trustedProxies := os.Getenv("TRUSTED_PROXIES"); trustedProxies != "" {
+		_ = router.SetTrustedProxies(strings.Split(trustedProxies, ","))
+	} else {
+		_ = router.SetTrustedProxies(nil)
+	}
+
 	// Protect against JSON / payload bombs by limiting request bodies to 1MB
 	router.Use(middleware.MaxBodySize(1 << 20))
 

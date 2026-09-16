@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ var (
 	ErrCheckInNotFound     = errors.New("Check-in no encontrado.")
 	ErrNotCheckInOwner     = errors.New("No puedes modificar el check-in de otro usuario.")
 	ErrEventClosed         = errors.New("El evento ya cerró, no puedes cambiar esta foto.")
+	ErrInvalidPhotoKey     = errors.New("Clave de foto inválida.")
 )
 
 const (
@@ -165,8 +167,19 @@ func (s *CheckInService) Confirm(
 	req domain.CheckInConfirmRequest,
 ) (*domain.CheckInResult, error) {
 
+	// Defense-in-depth: Reject path traversal sequences and enforce checkins/ prefix.
+	// Validate before consuming nonce so malformed keys fail immediately.
+	if req.PhotoKey != "" {
+		if strings.Contains(req.PhotoKey, "..") || strings.Contains(req.PhotoKey, "\\") || strings.Contains(strings.ToLower(req.PhotoKey), "%2e") || !strings.HasPrefix(req.PhotoKey, "checkins/") {
+			return nil, ErrInvalidPhotoKey
+		}
+	}
+
 	nonceKey := CheckInNonceKey(req.CheckInNonce)
-	raw, err := s.redis.Get(ctx, nonceKey).Result()
+	// Atomic single-use: GetDel atomically retrieves the session and deletes the nonce in Redis.
+	// This completely eliminates race conditions where concurrent requests could read the same nonce,
+	// preventing duplicate DB execution and preventing failing workers from deleting the winner's photo.
+	raw, err := s.redis.GetDel(ctx, nonceKey).Result()
 	if err == redis.Nil {
 		return nil, ErrInvalidCheckInNonce
 	}
@@ -178,12 +191,10 @@ func (s *CheckInService) Confirm(
 	if err := json.Unmarshal([]byte(raw), &session); err != nil {
 		return nil, ErrInvalidCheckInNonce
 	}
+
 	if session.UserID != userID || session.PlaceID != placeID || session.PhotoKey != req.PhotoKey {
 		return nil, ErrInvalidCheckInNonce
 	}
-
-	// Single-use: delete immediately after validation.
-	s.redis.Del(ctx, nonceKey)
 
 	// From here on the client has already uploaded to session.PhotoKey.
 	fail := func(err error) (*domain.CheckInResult, error) {
