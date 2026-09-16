@@ -50,13 +50,15 @@ func (f *fakeUserRepo) FindByID(_ context.Context, userID uuid.UUID) (*domain.Us
 
 // fakeRefreshRepo is an in-memory stand-in for the refresh token table.
 type fakeRefreshRepo struct {
-	// active maps a live token to its owner; rotation removes the old entry so
-	// a replayed token fails exactly as it would against the real table.
-	active map[string]uuid.UUID
+	active  map[string]uuid.UUID
+	revoked map[string]uuid.UUID
 }
 
 func newFakeRefreshRepo() *fakeRefreshRepo {
-	return &fakeRefreshRepo{active: map[string]uuid.UUID{}}
+	return &fakeRefreshRepo{
+		active:  map[string]uuid.UUID{},
+		revoked: map[string]uuid.UUID{},
+	}
 }
 
 func (f *fakeRefreshRepo) Create(_ context.Context, userID uuid.UUID, token string, _ time.Time) error {
@@ -67,15 +69,29 @@ func (f *fakeRefreshRepo) Create(_ context.Context, userID uuid.UUID, token stri
 func (f *fakeRefreshRepo) Rotate(_ context.Context, oldToken, newToken string, _ time.Time) (uuid.UUID, error) {
 	userID, ok := f.active[oldToken]
 	if !ok {
+		// Replay detection: check if oldToken was already rotated/revoked
+		if reusedUser, wasRevoked := f.revoked[oldToken]; wasRevoked {
+			// Revoke all active sessions for this user
+			for t, uid := range f.active {
+				if uid == reusedUser {
+					delete(f.active, t)
+					f.revoked[t] = reusedUser
+				}
+			}
+		}
 		return uuid.Nil, repo.ErrRefreshTokenInvalid
 	}
 	delete(f.active, oldToken)
+	f.revoked[oldToken] = userID
 	f.active[newToken] = userID
 	return userID, nil
 }
 
 func (f *fakeRefreshRepo) Revoke(_ context.Context, token string) error {
-	delete(f.active, token)
+	if uid, ok := f.active[token]; ok {
+		delete(f.active, token)
+		f.revoked[token] = uid
+	}
 	return nil
 }
 
@@ -328,3 +344,37 @@ func TestLogoutRevokesToken(t *testing.T) {
 	}
 }
 
+func TestRefreshReuseRevokesAllSessions(t *testing.T) {
+	existing := &domain.User{
+		UserID:        uuid.New(),
+		Email:         "ana@example.com",
+		Username:      "ana",
+		AccountStatus: "ACTIVE",
+	}
+	svc := newTestAuthService(&fakeUserRepo{byEmail: map[string]*domain.User{existing.Email: existing}}, existing.Email)
+
+	loginResp, err := svc.GoogleLogin(context.Background(), domain.GoogleAuthRequest{IDToken: "valid-token"})
+	if err != nil {
+		t.Fatalf("login failed: %v", err)
+	}
+	rt1 := loginResp.RefreshToken
+
+	// Legitimate refresh: RT1 is rotated to RT2
+	refResp, err := svc.Refresh(context.Background(), rt1)
+	if err != nil {
+		t.Fatalf("first refresh failed: %v", err)
+	}
+	rt2 := refResp.RefreshToken
+
+	// Attacker / replay: reuses RT1
+	_, err = svc.Refresh(context.Background(), rt1)
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected on reuse of RT1, got: %v", err)
+	}
+
+	// Because RT1 reuse was detected, RT2 must have been invalidated
+	_, err = svc.Refresh(context.Background(), rt2)
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected on RT2 after RT1 reuse, got: %v", err)
+	}
+}

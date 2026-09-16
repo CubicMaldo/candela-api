@@ -67,6 +67,21 @@ func (r *RefreshTokenRepository) Rotate(
 	`, hashToken(oldToken)).Scan(&userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// Token reuse detection: if this token existed and was already revoked,
+			// an attacker might be attempting a replay attack. Revoke all active
+			// sessions for this user immediately (RFC 6819).
+			var reusedUserID uuid.UUID
+			checkErr := tx.QueryRow(ctx, `
+				SELECT user_id FROM refresh_tokens
+				WHERE token_hash = $1 AND revoked_at IS NOT NULL
+			`, hashToken(oldToken)).Scan(&reusedUserID)
+			if checkErr == nil {
+				_, _ = tx.Exec(ctx, `
+					UPDATE refresh_tokens SET revoked_at = NOW()
+					WHERE user_id = $1 AND revoked_at IS NULL
+				`, reusedUserID)
+				_ = tx.Commit(ctx)
+			}
 			return uuid.Nil, ErrRefreshTokenInvalid
 		}
 		return uuid.Nil, err
