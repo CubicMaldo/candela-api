@@ -192,7 +192,18 @@ func (s *CheckInService) Confirm(
 		return nil, ErrInvalidCheckInNonce
 	}
 
-	if session.UserID != userID || session.PlaceID != placeID || session.PhotoKey != req.PhotoKey {
+	if session.UserID != userID || session.PlaceID != placeID {
+		return nil, ErrInvalidCheckInNonce
+	}
+
+	if req.PhotoKey != "" {
+		userPrefix := fmt.Sprintf("checkins/%s/", userID.String())
+		if !strings.HasPrefix(req.PhotoKey, userPrefix) {
+			return nil, ErrInvalidPhotoKey
+		}
+	}
+
+	if session.PhotoKey != req.PhotoKey {
 		return nil, ErrInvalidCheckInNonce
 	}
 
