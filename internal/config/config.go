@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -33,6 +34,16 @@ type Config struct {
 	StorageSecretKey      string
 	StorageBucket         string
 	StorageUseSSL         bool
+
+	// Database connection pool settings
+	DBMaxConns        int32
+	DBMinConns        int32
+	DBMaxConnLifetime time.Duration
+	DBMaxConnIdleTime time.Duration
+
+	// Rate limiting settings (requests per minute)
+	RateLimitAuth    int
+	RateLimitSession int
 }
 
 func Load() (Config, error) {
@@ -52,6 +63,14 @@ func Load() (Config, error) {
 		StorageSecretKey:      os.Getenv("STORAGE_SECRET_KEY"),
 		StorageBucket:         getEnv("STORAGE_BUCKET", "candela-photos"),
 		StorageUseSSL:         os.Getenv("STORAGE_USE_SSL") == "true",
+
+		DBMaxConns:        int32(getEnvInt("DB_MAX_CONNS", 25)),
+		DBMinConns:        int32(getEnvInt("DB_MIN_CONNS", 5)),
+		DBMaxConnLifetime: getEnvDuration("DB_MAX_CONN_LIFETIME", time.Hour),
+		DBMaxConnIdleTime: getEnvDuration("DB_MAX_CONN_IDLE_TIME", 30*time.Minute),
+
+		RateLimitAuth:    getEnvInt("RATE_LIMIT_AUTH", 10),
+		RateLimitSession: getEnvInt("RATE_LIMIT_SESSION", 120),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -83,6 +102,24 @@ func Load() (Config, error) {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
 	}
 	return fallback
 }

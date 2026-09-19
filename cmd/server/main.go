@@ -36,17 +36,26 @@ func main() {
 
 	ctx := context.Background()
 
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := postgres.NewPoolFromConfig(
+		ctx,
+		cfg.DatabaseURL,
+		cfg.DBMaxConns,
+		cfg.DBMinConns,
+		cfg.DBMaxConnLifetime,
+		cfg.DBMaxConnIdleTime,
+	)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v", err)
 	}
 	defer pool.Close()
+	log.Println("Connected to PostgreSQL successfully")
 
 	rdb, err := redisclient.NewClient(ctx, cfg.RedisURL)
 	if err != nil {
 		log.Fatalf("Unable to connect to redis: %v", err)
 	}
 	defer rdb.Close()
+	log.Println("Connected to Redis successfully")
 
 	if err := storage.EnsureBucket(
 		cfg.StorageEndpoint,

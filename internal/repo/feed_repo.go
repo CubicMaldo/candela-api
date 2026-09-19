@@ -33,6 +33,17 @@ func NewFeedRepository(db *pgxpool.Pool) *FeedRepository {
 // cursor would have no stable position to resume from.
 func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, limit int, cursor *domain.FeedCursor) ([]domain.CheckInEvent, error) {
 	query := `
+		WITH blocked_users AS (
+			SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END AS blocked_id
+			FROM friendships
+			WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
+		), user_follows AS (
+			SELECT place_id FROM follows WHERE follower_id = $1
+		), user_friends AS (
+			SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END AS friend_id
+			FROM friendships
+			WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'accepted'
+		)
 		SELECT * FROM (
 		SELECT DISTINCT ON (checkin_id) * FROM (
 			SELECT
@@ -44,25 +55,15 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
 				TRUE AS is_friend,
-				EXISTS (
-					SELECT 1 FROM follows fol2
-					WHERE fol2.follower_id = $1 AND fol2.place_id = ci.place_id
-				) AS is_followed,
+				fol.place_id IS NOT NULL AS is_followed,
 				1 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
 			INNER JOIN places p ON p.place_id = ci.place_id
-			INNER JOIN friendships f ON (
-				(f.user_id_a = $1 AND f.user_id_b = ci.user_id) OR
-				(f.user_id_b = $1 AND f.user_id_a = ci.user_id)
-			)
-			WHERE f.status = 'accepted'
-			  AND ci.checked_in_at > NOW() - INTERVAL '4 hours'
-			  AND ci.user_id NOT IN (
-			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
-			      FROM friendships
-			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
-			  )
+			INNER JOIN user_friends uf ON uf.friend_id = ci.user_id
+			LEFT JOIN user_follows fol ON fol.place_id = ci.place_id
+			WHERE ci.checked_in_at > NOW() - INTERVAL '4 hours'
+			  AND NOT EXISTS (SELECT 1 FROM blocked_users bu WHERE bu.blocked_id = ci.user_id)
 
 			UNION ALL
 
@@ -77,14 +78,12 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
 				FALSE AS is_friend,
-				EXISTS (
-					SELECT 1 FROM follows fol2
-					WHERE fol2.follower_id = $1 AND fol2.place_id = ci.place_id
-				) AS is_followed,
+				fol.place_id IS NOT NULL AS is_followed,
 				1 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
 			INNER JOIN places p ON p.place_id = ci.place_id
+			LEFT JOIN user_follows fol ON fol.place_id = ci.place_id
 			WHERE ci.user_id = $1
 			  AND ci.checked_in_at > NOW() - INTERVAL '4 hours'
 
@@ -98,25 +97,17 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				          AND ci.photo_is_permanent = false
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
-				EXISTS (
-					SELECT 1 FROM friendships f2
-					WHERE ((f2.user_id_a = $1 AND f2.user_id_b = ci.user_id)
-					    OR (f2.user_id_b = $1 AND f2.user_id_a = ci.user_id))
-					  AND f2.status = 'accepted'
-				) AS is_friend,
+				uf.friend_id IS NOT NULL AS is_friend,
 				TRUE AS is_followed,
 				2 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
 			INNER JOIN places p ON p.place_id = ci.place_id
-			INNER JOIN follows fol ON fol.place_id = ci.place_id AND fol.follower_id = $1
+			INNER JOIN user_follows fol ON fol.place_id = ci.place_id
+			LEFT JOIN user_friends uf ON uf.friend_id = ci.user_id
 			WHERE ci.checked_in_at > NOW() - INTERVAL '4 hours'
 			  AND ci.user_id != $1
-			  AND ci.user_id NOT IN (
-			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
-			      FROM friendships
-			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
-			  )
+			  AND NOT EXISTS (SELECT 1 FROM blocked_users bu WHERE bu.blocked_id = ci.user_id)
 
 			UNION ALL
 
@@ -128,28 +119,18 @@ func (r *FeedRepository) GetFeedCheckIns(ctx context.Context, userID uuid.UUID, 
 				          AND ci.photo_is_permanent = false
 				     THEN NULL ELSE ci.photo_url END AS photo_url,
 				ci.photo_is_permanent,
-				EXISTS (
-					SELECT 1 FROM friendships f2
-					WHERE ((f2.user_id_a = $1 AND f2.user_id_b = ci.user_id)
-					    OR (f2.user_id_b = $1 AND f2.user_id_a = ci.user_id))
-					  AND f2.status = 'accepted'
-				) AS is_friend,
-				EXISTS (
-					SELECT 1 FROM follows fol2
-					WHERE fol2.follower_id = $1 AND fol2.place_id = ci.place_id
-				) AS is_followed,
+				uf.friend_id IS NOT NULL AS is_friend,
+				fol.place_id IS NOT NULL AS is_followed,
 				3 AS priority_layer
 			FROM check_ins ci
 			INNER JOIN users u ON u.user_id = ci.user_id
 			INNER JOIN places p ON p.place_id = ci.place_id
+			LEFT JOIN user_friends uf ON uf.friend_id = ci.user_id
+			LEFT JOIN user_follows fol ON fol.place_id = ci.place_id
 			WHERE ci.checked_in_at > NOW() - INTERVAL '4 hours'
 			  AND u.privacy_mode != 'PRIVATE'
 			  AND ci.user_id != $1
-			  AND ci.user_id NOT IN (
-			      SELECT CASE WHEN user_id_a = $1 THEN user_id_b ELSE user_id_a END
-			      FROM friendships
-			      WHERE (user_id_a = $1 OR user_id_b = $1) AND status = 'blocked'
-			  )
+			  AND NOT EXISTS (SELECT 1 FROM blocked_users bu WHERE bu.blocked_id = ci.user_id)
 		) all_layers
 		ORDER BY checkin_id, priority_layer ASC
 		) feed

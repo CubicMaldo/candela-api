@@ -85,7 +85,7 @@ type AuthService struct {
 	googleValidator GoogleTokenValidator
 }
 
-func NewAuthService(ur *repo.UserRepository, rr *repo.RefreshTokenRepository, cfg config.Config) *AuthService {
+func NewAuthService(ur AuthUserRepo, rr AuthRefreshRepo, cfg config.Config) *AuthService {
 	return NewAuthServiceWithCustom(ur, rr, cfg, defaultGoogleValidator)
 }
 
