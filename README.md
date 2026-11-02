@@ -391,3 +391,32 @@ Defined in the `.env` file:
 | `STORAGE_SECRET_KEY` | MinIO S3 secret password. | `minioadmin` |
 | `STORAGE_BUCKET` | Bucket name for storing photos. | `candela-photos` |
 | `STORAGE_USE_SSL` | Enable SSL for the MinIO client (`true`/`false`). | `false` |
+
+
+---
+
+## 🗺️ Roadmap & Planned Work
+
+Active engineering roadmap with planned work ahead (>20 hours):
+
+- [ ] **Advanced Authentication & Sessions**:
+  - [ ] Implement strict rotating refresh tokens stored in Redis with cross-device session invalidation.
+  - [ ] Account recovery flow and transactional email verification.
+- [ ] **Feed Optimizations & High-Throughput Caching**:
+  - [ ] Binary cursor pagination optimized with compound indices on `check_ins (created_at DESC, id DESC)`.
+  - [ ] Hot-path Redis cache for global activity feeds and city rankings with event-driven invalidation.
+- [ ] **Anti-Fraud & Liveness Check-In Verification**:
+  - [ ] Validate EXIF metadata on photos uploaded to MinIO to cross-check photo capture timestamp and GPS against reported client location.
+  - [ ] Anomaly detection for impossible velocity between consecutive check-ins (>120 km/h flag).
+- [ ] **Social Plans & Presence**:
+  - [ ] RSVP and capacity limits for group outing plans.
+  - [ ] Webhook / SSE real-time notifications when nearby friends check in.
+- [ ] **Testing & Observability**:
+  - [ ] End-to-end integration test suite using `testcontainers-go` (ephemeral PostgreSQL + PostGIS and Redis).
+  - [ ] Prometheus metrics for P95/P99 latency across geospatial search and check-in endpoints.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
