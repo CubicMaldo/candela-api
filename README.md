@@ -1,394 +1,393 @@
 # Candela API
 
-Backend REST desarrollado en **Go** para **Candela**, la plataforma social y de gamificación orientada a la vida nocturna, salidas y parches urbanos en Colombia (con soporte principal para Barranquilla y Bogotá).
+REST backend built in **Go** for **Candela**, the social and gamification platform focused on nightlife, outings, and urban hangouts in Colombia (with primary support for Barranquilla and Bogotá).
 
-La API permite a los usuarios descubrir lugares físicos, coordinar planes, interactuar con amigos mediante feeds de actividad en tiempo real, realizar check-ins presenciales verificados por GPS y fotos, ganar puntos, mantener rachas semanales y competir en rankings de ciudad.
-
----
-
-## 📋 Tabla de Contenidos
-
-- [Stack Tecnológico](#-stack-tecnológico)
-- [Arquitectura del Proyecto](#-arquitectura-del-proyecto)
-- [Estructura de Directorios](#-estructura-de-directorios)
-- [Modelo de Datos](#-modelo-de-datos)
-- [Flujos y Lógica de Negocio](#-flujos-y-lógica-de-negocio)
-  - [1. Check-In en 2 Fases (Anti-Fraude y Liveness)](#1-check-in-en-2-fases-anti-fraude-y-liveness)
-  - [2. Feed de Actividad en 3 Capas](#2-feed-de-actividad-en-3-capas)
-  - [3. Planes Sociales y Descubrimiento en Mapa](#3-planes-sociales-y-descubrimiento-en-mapa)
-  - [4. Gamificación, Rachas y Rangos](#4-gamificación-rachas-y-rangos)
-  - [5. Protección de Menores de Edad](#5-protección-de-menores-de-edad)
-- [Seguridad y Resiliencia](#-seguridad-y-resiliencia)
-- [Referencia de la API (Endpoints)](#-referencia-de-la-api-endpoints)
-- [Instalación y Puesta en Marcha](#-instalación-y-puesta-en-marcha)
-  - [Requisitos](#requisitos)
-  - [Primeros Pasos](#primeros-pasos)
-  - [Comandos Útiles (Makefile)](#comandos-útiles-makefile)
-- [Variables de Entorno](#-variables-de-entorno)
+The API lets users discover physical places, coordinate plans, interact with friends through real-time activity feeds, perform in-person check-ins verified by GPS and photos, earn points, maintain weekly streaks, and compete in city rankings.
 
 ---
 
-## 🛠 Stack Tecnológico
+## 📋 Table of Contents
 
-| Componente | Tecnología | Uso en Candela |
+- [Tech Stack](#-tech-stack)
+- [Project Architecture](#-project-architecture)
+- [Directory Structure](#-directory-structure)
+- [Data Model](#-data-model)
+- [Business Flows and Logic](#-business-flows-and-logic)
+  - [1. Two-Phase Check-In (Anti-Fraud and Liveness)](#1-two-phase-check-in-anti-fraud-and-liveness)
+  - [2. Three-Layer Activity Feed](#2-three-layer-activity-feed)
+  - [3. Social Plans and Map Discovery](#3-social-plans-and-map-discovery)
+  - [4. Gamification, Streaks, and Ranks](#4-gamification-streaks-and-ranks)
+  - [5. Minor Protection](#5-minor-protection)
+- [Security and Resilience](#-security-and-resilience)
+- [API Reference (Endpoints)](#-api-reference-endpoints)
+- [Installation and Setup](#-installation-and-setup)
+  - [Requirements](#requirements)
+  - [Getting Started](#getting-started)
+  - [Useful Commands (Makefile)](#useful-commands-makefile)
+- [Environment Variables](#-environment-variables)
+
+---
+
+## 🛠 Tech Stack
+
+| Component | Technology | Use in Candela |
 | :--- | :--- | :--- |
-| **Lenguaje** | **Go 1.26** | Núcleo del servidor, tipado estricto y alto rendimiento. |
-| **Framework Web** | **Gin** (`github.com/gin-gonic/gin`) | Ruteo HTTP, middlewares, deserialización y validación de payloads. |
-| **Base de Datos** | **PostgreSQL 16 + PostGIS** | Almacenamiento relacional y cálculo geoespacial (`GEOGRAPHY(POINT, 4326)`). |
-| **Generador SQL** | **sqlc** + **pgx/v5** | Generación de código Go type-safe a partir de queries SQL nativas. |
-| **Caché y Concurrencia** | **Redis 7** | Rate limiting por IP, nonces de check-in (90s), blocklist de JWT y caché de rankings. |
-| **Almacenamiento de Objetos** | **MinIO (S3 Compatible)** | Bucket de fotos de check-in gestionado mediante URLs prefirmadas (`PUT` y `GET`). |
-| **Autenticación** | **JWT (`v5`) + Google OAuth** | Tokens de acceso de 15 min, tokens de refresco rotativos y login vía Google ID Token. |
-| **Migraciones** | **golang-migrate/v4** | Control de versiones del esquema de base de datos en SQL. |
-| **Entorno de Desarrollo** | **Docker Compose + Air** | Orquestación de contenedores y hot-reloading en tiempo de desarrollo. |
+| **Language** | **Go 1.26** | Server core, strict typing, and high performance. |
+| **Web Framework** | **Gin** (`github.com/gin-gonic/gin`) | HTTP routing, middlewares, payload deserialization and validation. |
+| **Database** | **PostgreSQL 16 + PostGIS** | Relational storage and geospatial computation (`GEOGRAPHY(POINT, 4326)`). |
+| **SQL Generator** | **sqlc** + **pgx/v5** | Type-safe Go code generation from native SQL queries. |
+| **Cache and Concurrency** | **Redis 7** | Per-IP rate limiting, check-in nonces (90s), JWT blocklist, and ranking cache. |
+| **Object Storage** | **MinIO (S3 Compatible)** | Check-in photo bucket managed through presigned URLs (`PUT` and `GET`). |
+| **Authentication** | **JWT (`v5`) + Google OAuth** | 15-minute access tokens, rotating refresh tokens, and login via Google ID Token. |
+| **Migrations** | **golang-migrate/v4** | Version control of the database schema in SQL. |
+| **Development Environment** | **Docker Compose + Air** | Container orchestration and hot-reloading during development. |
 
 ---
 
-## 🏛 Arquitectura del Proyecto
+## 🏛 Project Architecture
 
-Candela API sigue una **Arquitectura en Capas / Clean Architecture**, separando estrictamente responsabilidades:
+Candela API follows a **Layered / Clean Architecture**, with strictly separated responsibilities:
 
 ```mermaid
 flowchart TD
-    Client["Cliente (App Móvil / Web)"] --> HTTP["Gin Router & Middlewares\n(RateLimiter, AuthMiddleware)"]
-    HTTP --> Handlers["internal/handler\n(Controladores HTTP / DTOs)"]
-    Handlers --> Services["internal/service\n(Casos de Uso y Lógica de Negocio)"]
-    Services --> Domain["internal/domain\n(Modelos Puros, Reglas de Racha, Cursors)"]
+    Client["Client (Mobile App / Web)"] --> HTTP["Gin Router & Middlewares\n(RateLimiter, AuthMiddleware)"]
+    HTTP --> Handlers["internal/handler\n(HTTP Controllers / DTOs)"]
+    Handlers --> Services["internal/service\n(Use Cases and Business Logic)"]
+    Services --> Domain["internal/domain\n(Pure Models, Streak Rules, Cursors)"]
     Services --> Repos["internal/repo\n(Postgres / sqlc / PostGIS Queries)"]
     Services --> Infra["internal/infra\n(Redis, MinIO Storage, PG Pool)"]
-    Services -.-> Janitor["Background Janitor\n(Worker periódico de limpieza)"]
+    Services -.-> Janitor["Background Janitor\n(Periodic cleanup worker)"]
 ```
 
-1. **`internal/domain`**: Entidades centrales y lógica pura de negocio independiente de infraestructura o frameworks (e.g., reglas de rachas semanales, decodificación de cursores de feed, cálculo de edad).
-2. **`internal/repo`**: Acceso a datos y persistencia. Combina código generado por `sqlc` con queries optimizadas en `pgxpool`.
-3. **`internal/service`**: Orquestación de casos de uso (autenticación, check-ins, relaciones, planes, ranking).
-4. **`internal/handler`**: Adaptadores HTTP encargados de parsear las peticiones, verificar contratos y emitir respuestas JSON estandarizadas.
-5. **`internal/web`**: Configuración de routers, middlewares y rate-limiting.
-6. **`internal/infra`**: Clientes de bajo nivel para PostgreSQL, Redis y MinIO S3.
+1. **`internal/domain`**: Core entities and pure business logic independent of infrastructure or frameworks (e.g., weekly streak rules, feed cursor decoding, age calculation).
+2. **`internal/repo`**: Data access and persistence. Combines `sqlc`-generated code with optimized queries on `pgxpool`.
+3. **`internal/service`**: Use-case orchestration (authentication, check-ins, relationships, plans, rankings).
+4. **`internal/handler`**: HTTP adapters responsible for parsing requests, verifying contracts, and emitting standardized JSON responses.
+5. **`internal/web`**: Router, middleware, and rate-limiting configuration.
+6. **`internal/infra`**: Low-level clients for PostgreSQL, Redis, and MinIO S3.
 
 ---
 
-## 📂 Estructura de Directorios
+## 📂 Directory Structure
 
 ```text
 candela-api/
 ├── cmd/
-│   ├── server/main.go          # Punto de entrada de la aplicación y graceful shutdown
-│   └── migrate/main.go         # CLI para correr migraciones con golang-migrate
+│   ├── server/main.go          # Application entry point and graceful shutdown
+│   └── migrate/main.go         # CLI for running migrations with golang-migrate
 ├── db/
-│   ├── migrations/             # Archivos SQL de migración (up/down)
-│   ├── queries/                # Queries SQL puras para compilación con sqlc
-│   └── seed_mockdata.sql       # Datos de prueba para desarrollo (Barranquilla)
+│   ├── migrations/             # SQL migration files (up/down)
+│   ├── queries/                # Plain SQL queries for sqlc compilation
+│   └── seed_mockdata.sql       # Development test data (Barranquilla)
 ├── internal/
-│   ├── config/                 # Carga de variables de entorno y validaciones
-│   ├── domain/                 # Modelos de dominio y algoritmos puros
-│   ├── handler/                # Controladores HTTP de Gin
-│   ├── infra/                  # Conexiones: postgres (pgxpool), redis, minio
-│   ├── repo/                   # Repositorios de persistencia y sqlcgen
-│   ├── service/                # Lógica de negocio y worker Janitor
-│   ├── web/                    # Definición de rutas y middlewares
-│   └── webdeps/                # Contenedor de dependencias de la aplicación
-├── tests/                      # Suite modular de pruebas (unitarias, integración y seguridad)
-│   ├── auth/                   # Autenticación, JWT, rotación y revocación
-│   ├── checkin/                # Ciclo de vida y validaciones de check-in
-│   ├── domain/                 # Entidades y lógica pura de negocio
-│   ├── dos/                    # Protección Slowloris, payload limits y thundering herd
-│   ├── integration/            # Pruebas de integración con PostgreSQL y PostGIS
-│   ├── janitor/                # Tareas en segundo plano y limpieza de fotos/sesiones
-│   ├── plans/                  # Ciclo de vida y visibilidad de planes
-│   ├── privacy/                # Modos de privacidad y bloqueo de usuarios
-│   ├── race/                   # Condiciones de carrera (concurrencia de check-in y rate limit)
-│   ├── spoofing/               # Path traversal, IP spoofing y alteración de tokens
-│   └── testhelper/             # Mocks (ObjectStorage) y helpers de base de datos/Redis
-├── Dockerfile                  # Imagen para despliegue de producción
-├── Dockerfile.dev              # Imagen de desarrollo con Air
-├── docker-compose.yml          # Postgres, PostGIS, Redis, MinIO y API
-├── Makefile                    # Comandos de automatización y administración
-├── sqlc.yaml                   # Configuración del generador sqlc
-└── air.toml                    # Configuración de hot-reloading de Air
+│   ├── config/                 # Environment variable loading and validation
+│   ├── domain/                 # Domain models and pure algorithms
+│   ├── handler/                # Gin HTTP controllers
+│   ├── infra/                  # Connections: postgres (pgxpool), redis, minio
+│   ├── repo/                   # Persistence repositories and sqlcgen
+│   ├── service/                # Business logic and Janitor worker
+│   ├── web/                    # Route definitions and middlewares
+│   └── webdeps/                # Application dependency container
+├── tests/                      # Modular test suite (unit, integration, and security)
+│   ├── auth/                   # Authentication, JWT, rotation, and revocation
+│   ├── checkin/                # Check-in lifecycle and validations
+│   ├── domain/                 # Entities and pure business logic
+│   ├── dos/                    # Slowloris protection, payload limits, and thundering herd
+│   ├── integration/            # Integration tests with PostgreSQL and PostGIS
+│   ├── janitor/                # Background tasks and photo/session cleanup
+│   ├── plans/                  # Plan lifecycle and visibility
+│   ├── privacy/                # Privacy modes and user blocking
+│   ├── race/                   # Race conditions (check-in concurrency and rate limit)
+│   ├── spoofing/               # Path traversal, IP spoofing, and token tampering
+│   └── testhelper/             # Mocks (ObjectStorage) and database/Redis helpers
+├── Dockerfile                  # Production deployment image
+├── Dockerfile.dev              # Development image with Air
+├── docker-compose.yml          # Postgres, PostGIS, Redis, MinIO, and API
+├── Makefile                    # Automation and administration commands
+├── sqlc.yaml                   # sqlc generator configuration
+└── air.toml                    # Air hot-reloading configuration
 ```
 
 ---
 
-## 🗄 Modelo de Datos
+## 🗄 Data Model
 
-El esquema relacional se gestiona en PostgreSQL con extensiones `postgis` y `uuid-ossp`:
+The relational schema is managed in PostgreSQL with the `postgis` and `uuid-ossp` extensions:
 
-* **`users`**: Identidad del usuario, contraseña hasheada (bcrypt), fecha de nacimiento, estado de cuenta (`PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`), modo de privacidad (`PUBLIC`, `FRIENDS`, `PRIVATE`), soporte de tutor legal para menores, contadores de puntos totales/temporada y estado de rachas.
-* **`businesses`**: Empresas y operadores comerciales (`plan`: `FREE`, `BASIC`, `PREMIUM`).
-* **`places`**: Lugares físicos con categorías (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), aptitud para menores (`minor_suitability`: `YES`, `NO`, `PENDING`), columna geoespacial `location GEOGRAPHY(POINT, 4326)` y radio de geocerca (`geofence_meters` entre 20m y 150m, por defecto 80m, validado según el tipo de organizador: usuario hasta 80m, negocio hasta 120m, evento hasta 150m).
-* **`check_ins`**: Registro presencial con coordenadas reales, foto (`photo_url`, `photo_key`, `photo_expires_at`, `photo_is_permanent`), validación de geocerca y restricción de **un solo check-in exitoso por lugar por día** (`idx_checkins_one_per_place_per_day` evaluado según la zona `America/Bogota`).
-* **`plans` & `plan_participants`**: Planes sociales con plazos de 24, 48 o 72 horas. Soporta modo individual (`INVITE`) o abiertos (`FRIENDS`, `PUBLIC`).
-* **`friendships`**: Amistades bidireccionales con orden canónico (`user_id_a < user_id_b`) y soporte de bloqueos (`status`: `pending`, `accepted`, `blocked`).
-* **`follows`**: Lugares favoritos que el usuario sigue para recibir actualizaciones.
-* **`point_transactions`**: Auditoría de puntos otorgados por check-ins, planes o referidos.
-* **`reports`**: Sistema de denuncias de contenido sobre fotos, usuarios o lugares.
-* **`refresh_tokens`**: Sesiones móviles persistentes con hash criptográfico SHA-256 (`token_hash`), rotación transaccional y detección de reuso de tokens (revocación en cascada de todas las sesiones activas del usuario según RFC 6819 ante repeticiones maliciosas).
+* **`users`**: User identity, hashed password (bcrypt), date of birth, account status (`PENDING`, `ACTIVE`, `SUSPENDED`, `DELETED`), privacy mode (`PUBLIC`, `FRIENDS`, `PRIVATE`), legal guardian support for minors, total/season point counters, and streak state.
+* **`businesses`**: Companies and commercial operators (`plan`: `FREE`, `BASIC`, `PREMIUM`).
+* **`places`**: Physical places with categories (`RESTAURANT`, `CAFE`, `BAR`, `NIGHTCLUB`, `PARK`, `STORE`, `UNIVERSITY`, etc.), minor suitability (`minor_suitability`: `YES`, `NO`, `PENDING`), the geospatial column `location GEOGRAPHY(POINT, 4326)`, and geofence radius (`geofence_meters` between 20m and 150m, default 80m, validated according to organizer type: user up to 80m, business up to 120m, event up to 150m).
+* **`check_ins`**: In-person record with real coordinates, photo (`photo_url`, `photo_key`, `photo_expires_at`, `photo_is_permanent`), geofence validation, and a restriction of **one successful check-in per place per day** (`idx_checkins_one_per_place_per_day`, evaluated according to the `America/Bogota` time zone).
+* **`plans` & `plan_participants`**: Social plans with deadlines of 24, 48, or 72 hours. Supports individual mode (`INVITE`) or open mode (`FRIENDS`, `PUBLIC`).
+* **`friendships`**: Bidirectional friendships with canonical ordering (`user_id_a < user_id_b`) and block support (`status`: `pending`, `accepted`, `blocked`).
+* **`follows`**: Favorite places the user follows to receive updates.
+* **`point_transactions`**: Audit trail of points awarded for check-ins, plans, or referrals.
+* **`reports`**: Content reporting system for photos, users, or places.
+* **`refresh_tokens`**: Persistent mobile sessions with a SHA-256 cryptographic hash (`token_hash`), transactional rotation, and token reuse detection (cascading revocation of all the user's active sessions per RFC 6819 upon malicious replays).
 
 ---
 
-## 💡 Flujos y Lógica de Negocio
+## 💡 Business Flows and Logic
 
-### 1. Check-In en 2 Fases (Anti-Fraude y Liveness)
+### 1. Two-Phase Check-In (Anti-Fraud and Liveness)
 
-Para certificar que el usuario realmente está presente en el lugar y evitar fotos de galería o spoofing:
+To certify that the user is actually present at the place and to avoid gallery photos or spoofing:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor C as Cliente Móvil
+    actor C as Mobile Client
     participant A as Candela API
     participant R as Redis
     participant DB as Postgres + PostGIS
     participant S3 as MinIO (S3)
 
     C->>A: POST /places/:id/checkin/initiate (lat, lon)
-    A->>DB: Validar edad vs minor_suitability
-    A->>DB: Validar geofence (ST_DWithin en metros)
-    A->>DB: Validar que no haya hecho check-in hoy allí
-    A->>R: Guardar sesión temporal (nonce, lat, lon) [TTL: 90s]
-    A->>S3: Generar presigned PUT URL
+    A->>DB: Validate age vs minor_suitability
+    A->>DB: Validate geofence (ST_DWithin in meters)
+    A->>DB: Validate no check-in there today
+    A->>R: Store temporary session (nonce, lat, lon) [TTL: 90s]
+    A->>S3: Generate presigned PUT URL
     A-->>C: 200 OK (nonce, upload_url, photo_key)
 
-    C->>S3: Subir foto directamente (PUT upload_url)
+    C->>S3: Upload photo directly (PUT upload_url)
 
     C->>A: POST /places/:id/checkin/confirm (nonce, photo_key, permanent?)
-    A->>A: Validar path traversal y aislamiento de usuario (checkins/{user_id}/)
-    A->>R: Obtener y ELIMINAR nonce atómicamente (GetDel, previene carreras)
-    A->>DB: Insertar check_in (con coords iniciales verificadas)
-    A->>DB: Actualizar racha semanal y calcular multiplicadores
-    A->>DB: Otorgar puntos base, bonus y completar planes pendientes
-    A-->>C: 200 OK (checkin, photo_view_url 24h, breakdown de puntos)
+    A->>A: Validate path traversal and user isolation (checkins/{user_id}/)
+    A->>R: Atomically get and DELETE nonce (GetDel, prevents races)
+    A->>DB: Insert check_in (with verified initial coordinates)
+    A->>DB: Update weekly streak and compute multipliers
+    A->>DB: Award base points, bonuses, and complete pending plans
+    A-->>C: 200 OK (checkin, photo_view_url 24h, points breakdown)
 ```
 
-* **Consumo Atómico y Antirace (`GetDel`)**: La sesión temporal se extrae y elimina de Redis en una única operación atómica (`GetDel`), asegurando uso único estricto, previniendo check-ins duplicados concurrentes y evitando que una petición concurrente fallida elimine la foto de la petición ganadora.
-* **Protección contra Path Traversal y Suplantación**: El servidor rechaza cualquier `photo_key` con secuencias de salto de directorio (`..`, `\`, `%2e`) y fuerza que comience obligatoriamente con el prefijo canónico del usuario autenticado (`checkins/<user_id>/`).
-* **Fotos efímeras vs permanentes**: Las fotos expiran por defecto en 24 horas y son borradas por el *Janitor*. El usuario puede marcarlas como permanentes mientras el evento siga activo (últimas 4 horas).
+* **Atomic, Race-Free Consumption (`GetDel`)**: The temporary session is retrieved and deleted from Redis in a single atomic operation (`GetDel`), ensuring strict single use, preventing concurrent duplicate check-ins, and preventing a failed concurrent request from deleting the winning request's photo.
+* **Path Traversal and Impersonation Protection**: The server rejects any `photo_key` containing directory traversal sequences (`..`, `\`, `%2e`) and enforces that it must start with the authenticated user's canonical prefix (`checkins/<user_id>/`).
+* **Ephemeral vs. Permanent Photos**: Photos expire after 24 hours by default and are deleted by the *Janitor*. The user can mark them as permanent while the event is still active (last 4 hours).
 
 ---
 
-### 2. Feed de Actividad en 3 Capas
+### 2. Three-Layer Activity Feed
 
-El feed (`GET /api/feed`) consolida los check-ins con fotos ocurridos en las **últimas 4 horas**, organizados en capas de relevancia decreciente:
+The feed (`GET /api/feed`) consolidates check-ins with photos from the **last 4 hours**, organized in layers of decreasing relevance:
 
-* **Capa 1 ("Tu gente")**: Check-ins propios y de amigos confirmados.
-* **Capa 2**: Check-ins en lugares que el usuario sigue.
-* **Capa 3**: Actividad pública general en la ciudad (excluyendo perfiles privados).
+* **Layer 1 ("Your people")**: Your own check-ins and those of confirmed friends.
+* **Layer 2**: Check-ins at places the user follows.
+* **Layer 3**: General public activity in the city (excluding private profiles).
 
-**Paginación por Cursor Opaco**:
-La query utiliza `DISTINCT ON (checkin_id)` en PostgreSQL para que un evento que califique en varias capas se muestre únicamente en su capa de mayor prioridad. El paginado se resuelve mediante un token Base64 URL-safe: `FeedCursor` con formato:
+**Opaque Cursor Pagination**:
+The query uses `DISTINCT ON (checkin_id)` in PostgreSQL so that an event qualifying in several layers is shown only in its highest-priority layer. Pagination is resolved through a Base64 URL-safe token: `FeedCursor` with the format:
 $$\text{Base64}(\text{Layer} \mid \text{CheckedInAt} \mid \text{EventID})$$
 
 ---
 
-### 3. Planes Sociales y Descubrimiento en Mapa
+### 3. Social Plans and Map Discovery
 
-* **1 a 1 (`INVITE`)**: Invitación directa a un amigo para ir a un lugar en las próximas 24, 48 o 72 horas.
-* **Abiertos (`PUBLIC` o `FRIENDS`)**: Planes grupales que aparecen como pines en el mapa dentro de un radio en kilómetros (`GET /api/plans/discover?lat=...&lon=...&radius_km=...`). Cualquier persona autorizada puede unirse (`POST /plans/:id/join`).
-* **Concreción Automática**: Si un usuario con un plan aceptado o activo hace check-in en el lugar acordado, el sistema completa el plan automáticamente (`status: COMPLETED`) y acredita los puntos de bonificación del plan a los participantes.
+* **1-to-1 (`INVITE`)**: Direct invitation to a friend to go to a place within the next 24, 48, or 72 hours.
+* **Open (`PUBLIC` or `FRIENDS`)**: Group plans that appear as pins on the map within a radius in kilometers (`GET /api/plans/discover?lat=...&lon=...&radius_km=...`). Any authorized person can join (`POST /plans/:id/join`).
+* **Automatic Completion**: If a user with an accepted or active plan checks in at the agreed place, the system automatically completes the plan (`status: COMPLETED`) and credits the plan's bonus points to the participants.
 
 ---
 
-### 4. Gamificación, Rachas y Rangos
+### 4. Gamification, Streaks, and Ranks
 
-* **Puntos**:
-  * Base por check-in: +10 pts.
-  * Primera visita del día: +5 pts.
-  * Check-in con foto: +5 pts.
-  * Multiplicador semanal: $\times 1.5$ (a partir del segundo check-in en la semana) y $\times 2.0$ (a partir del cuarto).
-  * Bono de consistencia semanal: +5 o +10 pts al sostener rachas de 4 o 8+ semanas consecutivas.
-* **Niveles de Insignia (`badge_level`)**:
-  * **Nuevo en la vuelta**: $< 150$ pts
-  * **Callejero**: $\ge 150$ pts
-  * **Parroquiano**: $\ge 500$ pts
-  * **Teso**: $\ge 1500$ pts
-  * **Leyenda**: $\ge 5000$ pts
+* **Points**:
+  * Base per check-in: +10 pts.
+  * First visit of the day: +5 pts.
+  * Check-in with photo: +5 pts.
+  * Weekly multiplier: $\times 1.5$ (from the second check-in of the week) and $\times 2.0$ (from the fourth).
+  * Weekly consistency bonus: +5 or +10 pts for sustaining streaks of 4 or 8+ consecutive weeks.
+* **Badge Levels (`badge_level`)**:
+  * **Nuevo en la vuelta** (Newcomer): $< 150$ pts
+  * **Callejero** (Street Regular): $\ge 150$ pts
+  * **Parroquiano** (Local Patron): $\ge 500$ pts
+  * **Teso** (Pro): $\ge 1500$ pts
+  * **Leyenda** (Legend): $\ge 5000$ pts
 * **Rankings**:
-  * **Global**: Solo para usuarios activos con perfil `PUBLIC` y `ranking_opt_in = true`.
-  * **Amigos**: Ranking entre amigos directos. Ambos con caché en Redis y protección contra *thundering herd* / estampida de caché mediante `singleflight` (las peticiones concurrentes ante fallos de caché se unifican en una sola consulta a la base de datos).
+  * **Global**: Only for active users with a `PUBLIC` profile and `ranking_opt_in = true`.
+  * **Friends**: Ranking among direct friends. Both are cached in Redis and protected against *thundering herd* / cache stampede through `singleflight` (concurrent requests on cache misses are merged into a single database query).
 
 ---
 
-### 5. Protección de Menores de Edad
+### 5. Minor Protection
 
-* Si `birth_date` arroja $< 18$ años o el usuario tiene `is_protected = true`:
-  * Su privacidad solo puede ser `FRIENDS` o `PRIVATE` (nunca `PUBLIC`).
-  * Se prohíbe el check-in en lugares clasificados como no aptos para menores (`minor_suitability = 'NO'`).
-  * Cuenta con soporte para verificación de acudiente/tutor legal (`guardian_contact`, `guardian_token`).
-
----
-
-## 🛡 Seguridad y Resiliencia
-
-1. **Tokens de Acceso y Refresco**:
-   * **JWT de acceso**: Tiempo de vida corto (15 minutos) para minimizar riesgos de intercepción.
-   * **Refresh Tokens**: Cadenas criptográficas seguras de 256 bits (`crypto/rand`). Se guardan hasheadas con SHA-256 en la base de datos y se rotan atómicamente en una sola transacción en cada llamado a `/auth/refresh`.
-   * **Detección de Reuso de Tokens (RFC 6819)**: Si un refresh token ya revocado es reutilizado, el sistema detecta el intento de repetición y revoca inmediatamente todas las sesiones activas del usuario.
-   * **Baja de cuenta y Estados**: Al eliminar la cuenta, el JWT actual entra inmediatamente a una lista negra en Redis (`jwt:blocklist:<user_id>`) hasta agotar su tiempo de vida, y todos los refresh tokens se revocan en la base de datos. Peticiones con tokens de cuentas `SUSPENDED` o `DELETED` son bloqueadas con `403 Forbidden`.
-2. **Rate Limiting Atómico y Resiliente**:
-   * Implementado con scripts **Lua en Redis** (`INCR` + `PEXPIRE` / autoreparación de TTL), garantizando atomicidad y previniendo condiciones de carrera o llaves sin expiración.
-   * Endpoints sensibles a fuerza bruta (`/register`, `/login`): **10 peticiones/minuto**.
-   * Endpoints de mantenimiento de sesión (`/refresh`, `/logout`): **120 peticiones/minuto** (para evitar bloquear a usuarios conectados a redes Wi-Fi públicas o de campus con NAT compartido).
-3. **Mitigación de DoS y Slowloris**:
-   * **Timeouts HTTP en Servidor**: Servidor configurado con `ReadHeaderTimeout` (5s) para mitigar ataques Slowloris, además de `ReadTimeout` (15s), `WriteTimeout` (30s), `IdleTimeout` (60s) y `MaxHeaderBytes` (1MB).
-   * **Límite de Tamaño de Petición (Payload Bomb Protection)**: Middleware global `MaxBodySize` configurado a 1 MB que rechaza cuerpos de petición desproporcionados (`413 Request Entity Too Large`) y envuelve el reader con `http.MaxBytesReader` para proteger contra agotamiento de memoria (OOM).
-   * **Protección contra Thundering Herd**: Integración de `singleflight` en las consultas de rankings para unificar peticiones concurrentes cuando expira la caché de Redis.
-4. **Protección contra Spoofing y Path Traversal**:
-   * **IP Spoofing**: Configuración estricta de proxies de confianza en Gin mediante la variable de entorno `TRUSTED_PROXIES`. Si no se especifica, se ignora cualquier cabecera `X-Forwarded-For` arbitraria y se confía únicamente en la dirección remota real (`RemoteAddr`).
-   * **Path Traversal & Photo Key Isolation**: Validación defensiva contra secuencias de escape (`..`, `\`, `%2e`) y exigencia del prefijo `checkins/<user_id>/` en las fotos confirmadas.
-   * **Consumo Atómico de Sesión (`GetDel`)**: Recuperación y eliminación atómica del nonce en Redis para evitar condiciones de carrera concurrentes en check-ins.
-5. **Janitor Worker Concurrente**:
-   * Proceso en background que corre periódicamente cada hora.
-   * Reclama lotes de fotos expiradas en la base de datos utilizando `FOR UPDATE SKIP LOCKED`, garantizando que múltiples instancias de la API puedan correr concurrentemente sin disputar los mismos registros.
-   * Borra los objetos huérfanos de MinIO y depura tokens de refresco vencidos.
+* If `birth_date` yields an age $< 18$ years or the user has `is_protected = true`:
+  * Their privacy can only be `FRIENDS` or `PRIVATE` (never `PUBLIC`).
+  * Check-ins are prohibited at places classified as unsuitable for minors (`minor_suitability = 'NO'`).
+  * Supports guardian/legal tutor verification (`guardian_contact`, `guardian_token`).
 
 ---
 
-## 📡 Referencia de la API (Endpoints)
+## 🛡 Security and Resilience
 
-Todas las rutas autenticadas requieren el encabezado: `Authorization: Bearer <access_token>`.
-
-### Autenticación y Sesión
-* `POST /api/auth/register` — Registro tradicional con email, username, contraseña y fecha de nacimiento.
-* `POST /api/auth/login` — Inicio de sesión con credenciales.
-* `POST /api/auth/google` — Inicio de sesión con Google ID Token.
-* `POST /api/auth/google/register` — Completar registro para cuenta de Google nueva.
-* `POST /api/auth/refresh` — Rotación de refresh token y emisión de nuevo par de tokens.
-* `POST /api/auth/logout` — Revocación de refresh token.
-
-### Perfil y Usuario
-* `GET /api/me` — Perfil propio completo, métricas de racha y estadísticas agregadas.
-* `PATCH /api/me/privacy` — Actualizar modo de privacidad (`PUBLIC`, `FRIENDS`, `PRIVATE`).
-* `PATCH /api/me/ranking` — Habilitar o deshabilitar inclusión en el ranking global (`ranking_opt_in`).
-* `DELETE /api/me` — Eliminar cuenta, revocar sesiones y eliminar fotos asociadas.
-* `GET /api/me/check-ins` — Historial propio de check-ins con paginación temporal.
-* `GET /api/me/plans` — Historial de planes propios (filtro por estado).
-* `GET /api/me/friends` — Listado de amigos confirmados.
-* `GET /api/feed` — Feed social en 3 capas con paginación por cursor.
-
-### Lugares (`/api/places`)
-* `GET /api/places/nearby?lat=...&lon=...&radius_km=...&category=...` — Búsqueda de lugares por proximidad PostGIS.
-* `GET /api/places/:place_id` — Detalle del lugar, si el usuario lo sigue y concurrencia activa (últimas 4h).
-* `GET /api/places/:place_id/feed` — Feed en vivo del lugar (check-ins recientes con foto).
-* `POST /api/places/:place_id/follow` — Seguir lugar.
-* `DELETE /api/places/:place_id/follow` — Dejar de seguir lugar.
-* `POST /api/places/:place_id/checkin/initiate` — Iniciar check-in (validación GPS + URL prefirmada PUT).
-* `POST /api/places/:place_id/checkin/confirm` — Confirmar check-in y adjudicar puntos.
-* `PATCH /api/checkins/:checkin_id/permanent` — Convertir foto en permanente o efímera.
-
-### Planes (`/api/plans`)
-* `POST /api/plans` — Crear plan (1 a 1 o abierto).
-* `GET /api/plans/discover?lat=...&lon=...&radius_km=...` — Descubrir planes abiertos en el mapa.
-* `GET /api/plans/incoming` — Planes donde el usuario fue invitado.
-* `GET /api/plans/outgoing` — Planes creados por el usuario.
-* `GET /api/plans/:plan_id` — Detalle del plan y participantes.
-* `POST /api/plans/:plan_id/accept` — Aceptar plan invitado.
-* `POST /api/plans/:plan_id/decline` — Declinar plan invitado.
-* `POST /api/plans/:plan_id/join` — Unirse a plan abierto.
-* `DELETE /api/plans/:plan_id` — Cancelar plan (solo el creador).
-
-### Usuarios y Amistades
-* `GET /api/users?q=...` — Búsqueda de usuarios por prefijo de nombre de usuario.
-* `GET /api/users/:username` — Ver perfil público o parcial según relación de amistad y privacidad.
-* `POST /api/users/:user_id/block` — Bloquear a un usuario.
-* `DELETE /api/users/:user_id/block` — Desbloquear a un usuario.
-* `POST /api/users/:user_id/friend-request` — Enviar solicitud de amistad.
-* `DELETE /api/users/:user_id/friend` — Eliminar a un amigo.
-* `GET /api/friend-requests/incoming` — Solicitudes de amistad recibidas.
-* `GET /api/friend-requests/outgoing` — Solicitudes de amistad enviadas.
-* `POST /api/friend-requests/:user_id/accept` — Aceptar solicitud de amistad.
-* `POST /api/friend-requests/:user_id/reject` — Rechazar solicitud de amistad.
-* `DELETE /api/friend-requests/:user_id` — Cancelar solicitud de amistad enviada.
-
-### Rankings y Moderación
-* `GET /api/rankings/global` — Top ranking global de la ciudad (con caché Redis).
-* `GET /api/rankings/friends` — Tabla de posiciones entre el usuario y sus amigos.
-* `POST /api/reports` — Denunciar una foto, un usuario o un lugar.
+1. **Access and Refresh Tokens**:
+   * **Access JWT**: Short lifetime (15 minutes) to minimize interception risks.
+   * **Refresh Tokens**: Secure 256-bit cryptographic strings (`crypto/rand`). They are stored SHA-256 hashed in the database and rotated atomically in a single transaction on each call to `/auth/refresh`.
+   * **Token Reuse Detection (RFC 6819)**: If an already revoked refresh token is reused, the system detects the replay attempt and immediately revokes all of the user's active sessions.
+   * **Account Deletion and States**: When an account is deleted, the current JWT is immediately added to a Redis blocklist (`jwt:blocklist:<user_id>`) until its lifetime runs out, and all refresh tokens are revoked in the database. Requests with tokens from `SUSPENDED` or `DELETED` accounts are blocked with `403 Forbidden`.
+2. **Atomic and Resilient Rate Limiting**:
+   * Implemented with **Lua scripts in Redis** (`INCR` + `PEXPIRE` / TTL self-healing), guaranteeing atomicity and preventing race conditions or keys without expiration.
+   * Brute-force-sensitive endpoints (`/register`, `/login`): **10 requests/minute**.
+   * Session maintenance endpoints (`/refresh`, `/logout`): **120 requests/minute** (to avoid blocking users connected through public Wi-Fi or campus networks with shared NAT).
+3. **DoS and Slowloris Mitigation**:
+   * **Server HTTP Timeouts**: Server configured with `ReadHeaderTimeout` (5s) to mitigate Slowloris attacks, in addition to `ReadTimeout` (15s), `WriteTimeout` (30s), `IdleTimeout` (60s), and `MaxHeaderBytes` (1MB).
+   * **Request Size Limit (Payload Bomb Protection)**: Global `MaxBodySize` middleware set to 1 MB that rejects oversized request bodies (`413 Request Entity Too Large`) and wraps the reader with `http.MaxBytesReader` to protect against memory exhaustion (OOM).
+   * **Thundering Herd Protection**: `singleflight` integration in ranking queries to merge concurrent requests when the Redis cache expires.
+4. **Spoofing and Path Traversal Protection**:
+   * **IP Spoofing**: Strict trusted-proxy configuration in Gin through the `TRUSTED_PROXIES` environment variable. If not specified, any arbitrary `X-Forwarded-For` header is ignored and only the actual remote address (`RemoteAddr`) is trusted.
+   * **Path Traversal & Photo Key Isolation**: Defensive validation against escape sequences (`..`, `\`, `%2e`) and requirement of the `checkins/<user_id>/` prefix on confirmed photos.
+   * **Atomic Session Consumption (`GetDel`)**: Atomic retrieval and deletion of the nonce in Redis to avoid concurrent race conditions in check-ins.
+5. **Concurrent Janitor Worker**:
+   * Background process that runs periodically every hour.
+   * Claims batches of expired photos in the database using `FOR UPDATE SKIP LOCKED`, ensuring that multiple API instances can run concurrently without contending for the same records.
+   * Deletes orphaned objects from MinIO and purges expired refresh tokens.
 
 ---
 
-## 🚀 Instalación y Puesta en Marcha
+## 📡 API Reference (Endpoints)
 
-### Requisitos
-* [Docker](https://www.docker.com/) y [Docker Compose](https://docs.docker.com/compose/)
-* `make` (opcional pero recomendado)
-* Go 1.26+ (si deseas compilar localmente fuera del contenedor)
+All authenticated routes require the header: `Authorization: Bearer <access_token>`.
 
-### Primeros Pasos
+### Authentication and Session
+* `POST /api/auth/register` — Traditional registration with email, username, password, and date of birth.
+* `POST /api/auth/login` — Login with credentials.
+* `POST /api/auth/google` — Login with Google ID Token.
+* `POST /api/auth/google/register` — Complete registration for a new Google account.
+* `POST /api/auth/refresh` — Refresh token rotation and issuance of a new token pair.
+* `POST /api/auth/logout` — Refresh token revocation.
 
-1. **Configurar variables de entorno**:
+### Profile and User
+* `GET /api/me` — Full own profile, streak metrics, and aggregated statistics.
+* `PATCH /api/me/privacy` — Update privacy mode (`PUBLIC`, `FRIENDS`, `PRIVATE`).
+* `PATCH /api/me/ranking` — Enable or disable inclusion in the global ranking (`ranking_opt_in`).
+* `DELETE /api/me` — Delete account, revoke sessions, and delete associated photos.
+* `GET /api/me/check-ins` — Own check-in history with time-based pagination.
+* `GET /api/me/plans` — Own plan history (filterable by status).
+* `GET /api/me/friends` — List of confirmed friends.
+* `GET /api/feed` — Three-layer social feed with cursor pagination.
+
+### Places (`/api/places`)
+* `GET /api/places/nearby?lat=...&lon=...&radius_km=...&category=...` — Proximity-based place search using PostGIS.
+* `GET /api/places/:place_id` — Place details, whether the user follows it, and active concurrency (last 4h).
+* `GET /api/places/:place_id/feed` — Live place feed (recent check-ins with photo).
+* `POST /api/places/:place_id/follow` — Follow place.
+* `DELETE /api/places/:place_id/follow` — Unfollow place.
+* `POST /api/places/:place_id/checkin/initiate` — Start check-in (GPS validation + presigned PUT URL).
+* `POST /api/places/:place_id/checkin/confirm` — Confirm check-in and award points.
+* `PATCH /api/checkins/:checkin_id/permanent` — Turn photo permanent or ephemeral.
+
+### Plans (`/api/plans`)
+* `POST /api/plans` — Create plan (1-to-1 or open).
+* `GET /api/plans/discover?lat=...&lon=...&radius_km=...` — Discover open plans on the map.
+* `GET /api/plans/incoming` — Plans the user was invited to.
+* `GET /api/plans/outgoing` — Plans created by the user.
+* `GET /api/plans/:plan_id` — Plan details and participants.
+* `POST /api/plans/:plan_id/accept` — Accept an invited plan.
+* `POST /api/plans/:plan_id/decline` — Decline an invited plan.
+* `POST /api/plans/:plan_id/join` — Join an open plan.
+* `DELETE /api/plans/:plan_id` — Cancel plan (creator only).
+
+### Users and Friendships
+* `GET /api/users?q=...` — Search users by username prefix.
+* `GET /api/users/:username` — View public or partial profile depending on friendship and privacy.
+* `POST /api/users/:user_id/block` — Block a user.
+* `DELETE /api/users/:user_id/block` — Unblock a user.
+* `POST /api/users/:user_id/friend-request` — Send friend request.
+* `DELETE /api/users/:user_id/friend` — Remove a friend.
+* `GET /api/friend-requests/incoming` — Received friend requests.
+* `GET /api/friend-requests/outgoing` — Sent friend requests.
+* `POST /api/friend-requests/:user_id/accept` — Accept friend request.
+* `POST /api/friend-requests/:user_id/reject` — Reject friend request.
+* `DELETE /api/friend-requests/:user_id` — Cancel a sent friend request.
+
+### Rankings and Moderation
+* `GET /api/rankings/global` — Top global city ranking (Redis cached).
+* `GET /api/rankings/friends` — Leaderboard between the user and their friends.
+* `POST /api/reports` — Report a photo, a user, or a place.
+
+---
+
+## 🚀 Installation and Setup
+
+### Requirements
+* [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
+* `make` (optional but recommended)
+* Go 1.26+ (if you want to build locally outside the container)
+
+### Getting Started
+
+1. **Configure environment variables**:
    ```bash
    make setup
-   # O manualmente: cp .env.example .env
+   # Or manually: cp .env.example .env
    ```
-   Revisa los valores en `.env` (puertos, credenciales de Postgres, Redis, etc.).
+   Review the values in `.env` (ports, Postgres credentials, Redis, etc.).
 
-2. **Levantar los servicios**:
+2. **Start the services**:
    ```bash
    make up
    ```
-   Esto iniciará:
+   This will start:
    * **PostgreSQL + PostGIS**: `localhost:5432`
    * **Redis**: `localhost:6379`
-   * **MinIO API**: `localhost:9000` (Consola web en `localhost:9001`)
-   * **Candela API (con Air)**: `http://localhost:8080`
+   * **MinIO API**: `localhost:9000` (Web console at `localhost:9001`)
+   * **Candela API (with Air)**: `http://localhost:8080`
 
-3. **Ejecutar migraciones**:
+3. **Run migrations**:
    ```bash
    make migrate-up
    ```
 
-4. **Cargar datos de prueba (Mock Data)**:
+4. **Load test data (Mock Data)**:
    ```bash
    make seed
    ```
-   *Inserta usuarios de prueba, negocios y lugares reales de Barranquilla (contraseña general: `password123`).*
+   *Inserts test users, businesses, and real places in Barranquilla (shared password: `password123`).*
 
-5. **Verificar estado de salud**:
+5. **Check health status**:
    ```bash
    curl http://localhost:8080/health
-   # Respuesta: {"env":"development","service":"candela-api","status":"ok"}
+   # Response: {"env":"development","service":"candela-api","status":"ok"}
    ```
 
 ---
 
-### Comandos Útiles (Makefile)
+### Useful Commands (Makefile)
 
 ```bash
-make help            # Muestra el listado de comandos disponibles
-make up              # Levanta todos los contenedores en segundo plano
-make down            # Detiene los contenedores (preserva volúmenes)
-make down-v          # Detiene los contenedores y BORRA los datos
-make logs-api        # Sigue los logs de la API en vivo
-make shell-api       # Abre una terminal sh dentro del contenedor de la API
-make shell-db        # Conecta con psql en la base de datos
-make redis-cli       # Abre la consola interactiva de Redis
-make migrate-up      # Aplica migraciones SQL pendientes
-make migrate-down    # Revierte la última migración
-make sqlc-generate   # Regenera el código de repositorios a partir de db/queries/
-make test            # Ejecuta la suite de pruebas (unitarias, integración, concurrencia, DoS, spoofing)
+make help            # Shows the list of available commands
+make up              # Starts all containers in the background
+make down            # Stops the containers (preserves volumes)
+make down-v          # Stops the containers and DELETES the data
+make logs-api        # Follows the API logs live
+make shell-api       # Opens a sh terminal inside the API container
+make shell-db        # Connects to the database with psql
+make redis-cli       # Opens the interactive Redis console
+make migrate-up      # Applies pending SQL migrations
+make migrate-down    # Reverts the last migration
+make sqlc-generate   # Regenerates repository code from db/queries/
+make test            # Runs the test suite (unit, integration, concurrency, DoS, spoofing)
 ```
 
 ---
 
-## ⚙️ Variables de Entorno
+## ⚙️ Environment Variables
 
-Definidas en el archivo `.env`:
+Defined in the `.env` file:
 
-| Variable | Descripción | Valor por Defecto / Ejemplo |
+| Variable | Description | Default Value / Example |
 | :--- | :--- | :--- |
-| `APP_ENV` | Entorno de ejecución (`development`, `production`). | `development` |
-| `PORT` | Puerto HTTP expuesto por la API. | `8080` |
-| `APP_TIMEZONE` | Zona horaria IANA para la ventana de días en vida nocturna. | `America/Bogota` |
-| `DATABASE_URL` | String de conexión a PostgreSQL. | `postgres://candela_user:...@localhost:5432/candela_db?sslmode=disable` |
-| `REDIS_URL` | Conexión a Redis con contraseña. | `redis://:candela_redis_pass@localhost:6379/0` |
-| `JWT_SECRET` | Llave secreta para firmar tokens JWT (mínimo 32 caracteres en producción). | `insecure-dev-only-secret` |
-| `GOOGLE_CLIENT_ID`| Client ID de Google OAuth para validar ID Tokens móviles. | Opcional en desarrollo |
-| `TRUSTED_PROXIES` | IPs o rangos CIDR de proxies reversos de confianza separados por comas para Gin (mitiga IP spoofing). | Opcional (por defecto confía únicamente en `RemoteAddr`) |
-| `STORAGE_ENDPOINT`| URL del servicio MinIO para la API interna. | `http://minio:9000` |
-| `STORAGE_PUBLIC_ENDPOINT`| URL alcanzable por dispositivos móviles/emuladores (e.g., loopback Android). | `http://10.0.2.2:9000` |
-| `STORAGE_ACCESS_KEY` | Usuario/Key de MinIO S3. | `minioadmin` |
-| `STORAGE_SECRET_KEY` | Contraseña secreta de MinIO S3. | `minioadmin` |
-| `STORAGE_BUCKET` | Nombre del bucket para almacenar fotos. | `candela-photos` |
-| `STORAGE_USE_SSL` | Activar SSL para el cliente MinIO (`true`/`false`). | `false` |
-
+| `APP_ENV` | Runtime environment (`development`, `production`). | `development` |
+| `PORT` | HTTP port exposed by the API. | `8080` |
+| `APP_TIMEZONE` | IANA time zone for the day window in nightlife. | `America/Bogota` |
+| `DATABASE_URL` | PostgreSQL connection string. | `postgres://candela_user:...@localhost:5432/candela_db?sslmode=disable` |
+| `REDIS_URL` | Redis connection with password. | `redis://:candela_redis_pass@localhost:6379/0` |
+| `JWT_SECRET` | Secret key for signing JWT tokens (minimum 32 characters in production). | `insecure-dev-only-secret` |
+| `GOOGLE_CLIENT_ID`| Google OAuth Client ID to validate mobile ID Tokens. | Optional in development |
+| `TRUSTED_PROXIES` | Comma-separated IPs or CIDR ranges of trusted reverse proxies for Gin (mitigates IP spoofing). | Optional (by default trusts only `RemoteAddr`) |
+| `STORAGE_ENDPOINT`| MinIO service URL for the internal API. | `http://minio:9000` |
+| `STORAGE_PUBLIC_ENDPOINT`| URL reachable by mobile devices/emulators (e.g., Android loopback). | `http://10.0.2.2:9000` |
+| `STORAGE_ACCESS_KEY` | MinIO S3 user/key. | `minioadmin` |
+| `STORAGE_SECRET_KEY` | MinIO S3 secret password. | `minioadmin` |
+| `STORAGE_BUCKET` | Bucket name for storing photos. | `candela-photos` |
+| `STORAGE_USE_SSL` | Enable SSL for the MinIO client (`true`/`false`). | `false` |
